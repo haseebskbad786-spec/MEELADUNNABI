@@ -170,6 +170,106 @@ function closeMenu(){
 document.getElementById("sidebar").style.width="0";
 }
 </script>
+<!-- ADMIN LOGIN -->
 
+<div id="adminLogin" style="display:none;background:white;padding:20px;margin:20px;border-radius:10px;">
+<h2>🔐 Admin Login</h2>
+
+<input type="password" id="adminPass" placeholder="Enter Password"
+style="width:100%;padding:10px;margin:10px 0;">
+
+<button onclick="loginAdmin()"
+style="padding:10px 20px;background:green;color:white;border:none;">
+Login
+</button>
+
+<p id="loginMsg"></p>
+</div>
+
+<!-- ADMIN PANEL -->
+
+<div id="adminPanel" style="display:none;background:white;padding:20px;margin:20px;border-radius:10px;">
+
+<h2>⚙️ Admin Panel</h2>
+
+<h3>Add Result</h3>
+
+<input type="text" id="programName" placeholder="Program Name"><br><br>
+
+<select id="teamName">
+<option>Team A</option>
+<option>Team B</option>
+<option>Team C</option>
+</select>
+
+<select id="position">
+<option value="10">🥇 First (10)</option>
+<option value="7">🥈 Second (7)</option>
+<option value="5">🥉 Third (5)</option>
+</select>
+
+<button onclick="addResult()">Save Result</button>
+
+<hr>
+
+<h3>🏆 Team Points</h3>
+
+<p>Team A : <span id="aPoint">0</span></p>
+<p>Team B : <span id="bPoint">0</span></p>
+<p>Team C : <span id="cPoint">0</span></p>
+
+</div>
+
+<script>
+
+let teamPoints={
+A:0,
+B:0,
+C:0
+};
+
+function loginAdmin(){
+
+let pass=document.getElementById("adminPass").value;
+
+if(pass==="1234"){
+
+document.getElementById("adminPanel").style.display="block";
+
+document.getElementById("loginMsg").innerHTML="✅ Login Success";
+
+}else{
+
+document.getElementById("loginMsg").innerHTML="❌ Wrong Password";
+
+}
+
+}
+
+function addResult(){
+
+let team=document.getElementById("teamName").value;
+let points=parseInt(document.getElementById("position").value);
+
+if(team==="Team A"){
+teamPoints.A+=points;
+}
+
+if(team==="Team B"){
+teamPoints.B+=points;
+}
+
+if(team==="Team C"){
+teamPoints.C+=points;
+}
+
+document.getElementById("aPoint").innerHTML=teamPoints.A;
+document.getElementById("bPoint").innerHTML=teamPoints.B;
+document.getElementById("cPoint").innerHTML=teamPoints.C;
+
+alert("Result Added Successfully");
+
+}
+</script>
 </body>
 </html>
