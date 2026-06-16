@@ -124,7 +124,9 @@ margin-top:20px;
 <a href="#">📊 Team Scoreboard</a>
 <a href="#">📋 Programs</a>
 <a href="#">ℹ️ About</a>
-<a href="#">🔐 Admin Login</a>
+<a href="#" onclick="document.getElementById('adminLogin').style.display='block'">
+🔐 Admin Login
+</a>
 <a href="#">⚙️ Settings</a>
 </div>
 
@@ -270,10 +272,9 @@ document.getElementById("aPoint").innerHTML=teamPoints.A;
 document.getElementById("bPoint").innerHTML=teamPoints.B;
 document.getElementById("cPoint").innerHTML=teamPoints.C;
 
-alert("Result Added Successfully");
+  alert("Result Added Successfully");
 
 }
-</button>
 </script>
 </body>
 </html>
