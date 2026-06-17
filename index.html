@@ -139,7 +139,7 @@ button{font-family:inherit;cursor:pointer;border:none;}
 .hero .hero-emblem{position:absolute;right:-18px;top:-18px;width:130px;height:130px;opacity:.14;}
 .hero h1{font-size:1.5rem;margin:0 0 6px;}
 .hero p{margin:0;opacity:.8;font-family:'Cormorant Garamond',serif;font-style:italic;font-size:1rem;}
-.stat-row{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:18px;}
+.stat-row{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:18px;}
 .stat-box{background:rgba(255,255,255,.08);border-radius:12px;padding:10px 8px;text-align:center;}
 .stat-box b{display:block;font-size:1.3rem;font-family:'JetBrains Mono',monospace;color:var(--gold-400);}
 .stat-box span{font-size:.68rem;opacity:.75;}
@@ -356,9 +356,10 @@ button{font-family:inherit;cursor:pointer;border:none;}
     <h1>Meeladunnabi Celebrations</h1>
     <p>Live results, team honours &amp; programs — all in one place</p>
     <div class="stat-row">
-      <div class="stat-box"><b id="stProg">0</b><span>Programs</span></div>
-      <div class="stat-box"><b id="stPart">0</b><span>Participants</span></div>
+      <div class="stat-box"><b id="stPart">0</b><span>Candidates</span></div>
       <div class="stat-box"><b id="stTeam">0</b><span>Teams</span></div>
+      <div class="stat-box"><b id="stCat">0</b><span>Categories</span></div>
+      <div class="stat-box"><b id="stProg">0</b><span>Programs</span></div>
     </div>
   </div>
 
@@ -417,6 +418,11 @@ button{font-family:inherit;cursor:pointer;border:none;}
   <div class="info-card">
     <h3>Technical Information</h3>
     <p>Built with modern web technology · Responsive design · Mobile friendly · Secure admin access · Real-time result display · Professional user experience.</p>
+  </div>
+  <div class="info-card">
+    <h3>Developed By</h3>
+    <p><b>Abdul Haseeb PC</b> is a dedicated professional with experience in data entry, computer operations, and online service management. He possesses strong skills in typing, document processing, customer support, and digital services. Proficient in Malayalam and English, with basic knowledge of Arabic, he is committed to delivering reliable and efficient solutions through technology.</p>
+    <p style="margin-top:10px;">His focus is on creating user-friendly digital services that help people access information and complete tasks easily. Through continuous learning and innovation, he aims to provide quality services and improve the user experience.</p>
   </div>
   <div class="info-card">
     <h3>Future Features</h3>
@@ -575,6 +581,9 @@ function loadDB(){
     const parsed = JSON.parse(raw);
     if(!parsed.teams || !parsed.settings) return defaultDB();
     if(!parsed.settings.adminPin) parsed.settings.adminPin = '1234';
+    (parsed.participants||[]).forEach(p=>{
+      if(!p.programIds){ p.programIds = p.programId ? [p.programId] : []; }
+    });
     return parsed;
   }catch(e){ return defaultDB(); }
 }
@@ -648,6 +657,7 @@ function renderHome(){
   document.getElementById('stProg').textContent = db.programs.length;
   document.getElementById('stPart').textContent = db.participants.length;
   document.getElementById('stTeam').textContent = db.teams.length;
+  document.getElementById('stCat').textContent = AGES.length;
 
   const champ = [...db.teams].sort((a,b)=>b.points-a.points)[0];
   const cc = document.getElementById('championCard');
@@ -675,6 +685,17 @@ function resultCardHTML(r){
     const team = db.teams.find(t=>t.id===w.teamId);
     winnersHTML += `<div class="winner-row"><span class="medal">${medal}</span><b>${esc(w.name)}</b><span class="team-tag">${team?esc(team.name):''}</span><span class="pts">+${pts[pos]}</span></div>`;
   });
+  const gradeLabels = {gradeA:['🅰️','Grade A'],gradeB:['🅱️','Grade B'],gradeC:['🅲️','Grade C'],participation:['🎗️','Participation']};
+  let gradesHTML = '';
+  if(r.grades){
+    Object.keys(gradeLabels).forEach(key=>{
+      (r.grades[key]||[]).forEach(e=>{
+        if(!e.name) return;
+        const team = db.teams.find(t=>t.id===e.teamId);
+        gradesHTML += `<div class="winner-row"><span class="medal">${gradeLabels[key][0]}</span><b>${esc(e.name)}</b><span class="team-tag">${team?esc(team.name):''} · ${gradeLabels[key][1]}</span><span class="pts">+${pts[key]}</span></div>`;
+      });
+    });
+  }
   return `<div class="card result-card">
     <div class="rc-top">
       <div>
@@ -684,7 +705,7 @@ function resultCardHTML(r){
       </div>
       <span class="tagchip ${tagClass}">${r.gender}</span>
     </div>
-    <div class="winners">${winnersHTML || '<span class="meta">No winners recorded</span>'}</div>
+    <div class="winners">${winnersHTML || '<span class="meta">No winners recorded</span>'}${gradesHTML}</div>
     <div class="rc-date">${new Date(r.datetime).toLocaleDateString()} ${new Date(r.datetime).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</div>
   </div>`;
 }
@@ -941,6 +962,7 @@ function programsListHTML(){
     <div class="list-row">
       <div class="lr-info"><b>${esc(p.code)} — ${esc(p.name)}</b><small>${p.categories.map(c=>c.gender+' '+c.age).join(', ')} · ⏱ ${esc(p.duration||'—')} ${p.maxParticipants?'· Max '+p.maxParticipants:''} ${p.single?'· Single':''}${p.group?'· Group':''}</small></div>
       <div class="lr-actions">
+        <button class="icon-btn" onclick="addResultForProgram('${p.id}')" title="Add result for this program">🏅</button>
         <button class="icon-btn" onclick="openProgramForm('${p.id}')">✏️</button>
         <button class="icon-btn" ondblclick="deleteProgram('${p.id}')" title="Double-tap to delete">🗑️</button>
       </div>
@@ -1015,9 +1037,9 @@ function participantsListHTML(){
   if(!db.participants.length) return emptyState('🧑‍🤝‍🧑','No participants yet','Tap + to add a participant.');
   return db.participants.map(pa=>{
     const team = db.teams.find(t=>t.id===pa.teamId);
-    const prog = db.programs.find(p=>p.id===pa.programId);
+    const progs = db.programs.filter(p=>(pa.programIds||[]).includes(p.id));
     return `<div class="list-row">
-      <div class="lr-info"><b>#${esc(pa.number)} ${esc(pa.name)}</b><small>${team?team.name:'No team'} · ${pa.gender} ${pa.age} ${prog?'· '+prog.code:''}</small></div>
+      <div class="lr-info"><b>#${esc(pa.number)} ${esc(pa.name)}</b><small>${pa.cls?'Class '+esc(pa.cls)+' · ':''}${team?team.name:'No team'} · ${pa.gender} ${pa.age}${progs.length?' · '+progs.map(p=>p.code).join(', '):''}</small></div>
       <div class="lr-actions">
         <button class="icon-btn" onclick="openParticipantForm('${pa.id}')">✏️</button>
         <button class="icon-btn" ondblclick="deleteParticipant('${pa.id}')" title="Double-tap to delete">🗑️</button>
@@ -1027,27 +1049,47 @@ function participantsListHTML(){
 }
 function teamOptionsHTML(selId){ return db.teams.map(t=>`<option value="${t.id}" ${t.id===selId?'selected':''}>${esc(t.name)}</option>`).join(''); }
 function programOptionsHTML(selId){ return db.programs.map(p=>`<option value="${p.id}" ${p.id===selId?'selected':''}>${esc(p.code)} — ${esc(p.name)}</option>`).join(''); }
+function programsForCategory(gender,age){ return db.programs.filter(p=>p.categories.some(c=>c.gender===gender && c.age===age)); }
+function participantProgramsChecklistHTML(gender,age,selectedIds){
+  selectedIds = selectedIds||[];
+  const progs = programsForCategory(gender,age);
+  if(!progs.length) return `<p style="font-size:.78rem;color:var(--ink-soft);">No programs found for ${gender} ${age} yet — add programs for this category first.</p>`;
+  return `<div class="checkgrid" style="grid-template-columns:1fr 1fr;">${progs.map(p=>`<label><input type="checkbox" class="paProgramCheck" value="${p.id}" ${selectedIds.includes(p.id)?'checked':''}> ${esc(p.code)} ${esc(p.name)}</label>`).join('')}</div>`;
+}
+function refreshParticipantPrograms(){
+  const gender = document.getElementById('mPaGender').value;
+  const age = document.getElementById('mPaAge').value;
+  document.getElementById('paProgramsWrap').innerHTML = participantProgramsChecklistHTML(gender,age,[]);
+}
 function openParticipantForm(id){
   const pa = id ? db.participants.find(x=>x.id===id) : null;
+  const initGender = pa?pa.gender:GENDERS[0];
+  const initAge = pa?pa.age:AGES[0];
   document.getElementById('modalContent').innerHTML = `
     <h3>${pa?'Edit Participant':'Add Participant'}</h3>
     <div class="row2">
       <div class="field"><label>Candidate Number</label><input id="mPaNum" value="${pa?esc(pa.number):''}"></div>
       <div class="field"><label>Candidate Name</label><input id="mPaName" value="${pa?esc(pa.name):''}"></div>
     </div>
-    <div class="field"><label>Team</label><select id="mPaTeam"><option value="">—</option>${teamOptionsHTML(pa?pa.teamId:null)}</select></div>
     <div class="row2">
-      <div class="field"><label>Gender</label><select id="mPaGender">${GENDERS.map(g=>`<option ${pa&&pa.gender===g?'selected':''}>${g}</option>`).join('')}</select></div>
-      <div class="field"><label>Age Group</label><select id="mPaAge">${AGES.map(a=>`<option ${pa&&pa.age===a?'selected':''}>${a}</option>`).join('')}</select></div>
+      <div class="field"><label>Class (e.g. 5th Std)</label><input id="mPaClass" placeholder="To tell apart same names" value="${pa&&pa.cls?esc(pa.cls):''}"></div>
+      <div class="field"><label>Team</label><select id="mPaTeam"><option value="">—</option>${teamOptionsHTML(pa?pa.teamId:null)}</select></div>
     </div>
-    <div class="field"><label>Program</label><select id="mPaProgram"><option value="">—</option>${programOptionsHTML(pa?pa.programId:null)}</select></div>
-    <button class="btn btn-primary btn-block" onclick="saveParticipant('${id||''}')">Save Participant</button>`;
+    <div class="row2">
+      <div class="field"><label>Gender</label><select id="mPaGender" onchange="refreshParticipantPrograms()">${GENDERS.map(g=>`<option ${initGender===g?'selected':''}>${g}</option>`).join('')}</select></div>
+      <div class="field"><label>Age Group</label><select id="mPaAge" onchange="refreshParticipantPrograms()">${AGES.map(a=>`<option ${initAge===a?'selected':''}>${a}</option>`).join('')}</select></div>
+    </div>
+    <div class="field"><label>Programs in this Category — tick all that apply</label>
+      <div id="paProgramsWrap">${participantProgramsChecklistHTML(initGender,initAge,pa?pa.programIds:[])}</div>
+    </div>
+    <button class="btn btn-primary btn-block" onclick="saveParticipant('${id||''}')" style="margin-top:14px;">Save Participant</button>`;
   openModal();
 }
 function saveParticipant(id){
   const name = document.getElementById('mPaName').value.trim();
   if(!name){ toast('Candidate name required'); return; }
-  const data = {number:document.getElementById('mPaNum').value.trim(),name,teamId:document.getElementById('mPaTeam').value||null,gender:document.getElementById('mPaGender').value,age:document.getElementById('mPaAge').value,programId:document.getElementById('mPaProgram').value||null};
+  const programIds = [...document.querySelectorAll('.paProgramCheck:checked')].map(cb=>cb.value);
+  const data = {number:document.getElementById('mPaNum').value.trim(),name,cls:document.getElementById('mPaClass').value.trim(),teamId:document.getElementById('mPaTeam').value||null,gender:document.getElementById('mPaGender').value,age:document.getElementById('mPaAge').value,programIds};
   if(id){ const pa=db.participants.find(x=>x.id===id); Object.assign(pa,data); }
   else { db.participants.push({id:uid(), ...data}); }
   saveDB(); closeModal(); renderAdminTab(); toast('Participant saved');
@@ -1071,26 +1113,100 @@ function resultsListHTML(){
     </div>`;
   }).join('');
 }
-function openResultForm(id){
+function gradeRowHTML(key,name,teamId){
+  name = name||''; teamId = teamId||'';
+  return `<div class="grade-row" style="display:flex;gap:6px;margin-bottom:6px;align-items:center;">
+    <input type="text" placeholder="Name" value="${esc(name)}" class="gradeNameInput" style="flex:1.4;padding:9px 10px;border-radius:8px;border:1px solid var(--line);font-size:.82rem;">
+    <select class="gradeTeamSelect" style="flex:1;padding:9px 10px;border-radius:8px;border:1px solid var(--line);font-size:.82rem;">
+      <option value="">Team</option>${teamOptionsHTML(teamId)}
+    </select>
+    <button type="button" class="icon-btn" onclick="this.closest('.grade-row').remove()">✕</button>
+  </div>`;
+}
+function gradeSectionHTML(key,label,r){
+  const entries = (r && r.grades && r.grades[key]) ? r.grades[key] : [];
+  return `<div class="cat-group" data-key="${key}">
+    <div class="cat-group-head" style="justify-content:space-between;">
+      <b style="font-size:.84rem;color:var(--green-800);">${label}</b>
+      <button type="button" class="btn btn-sm btn-outline" onclick="addGradeRow('${key}')">+ Add</button>
+    </div>
+    <div class="grade-rows" id="gradeRows_${key}">${entries.map(e=>gradeRowHTML(key,e.name,e.teamId)).join('')}</div>
+  </div>`;
+}
+function addGradeRow(key){
+  document.getElementById('gradeRows_'+key).insertAdjacentHTML('beforeend', gradeRowHTML(key));
+}
+function getProgramParticipants(programId){ return db.participants.filter(p=>(p.programIds||[]).includes(programId)); }
+function winnersAndGradesHTML(programId, r){
+  const participants = getProgramParticipants(programId);
+  let html = `<div class="section-title" style="margin-top:18px;"><span class="dot"></span><h2 style="font-size:.92rem;">Winners</h2></div>`;
+  if(participants.length){
+    html += `<div class="cat-group"><p style="font-size:.74rem;color:var(--ink-soft);margin:0 0 8px;">Choose from candidates registered for this program.</p>`;
+    ['first','second','third'].forEach(pos=>{
+      const medal = pos==='first'?'🥇':(pos==='second'?'🥈':'🥉');
+      const w = r?r.winners[pos]:null;
+      const selectedP = w ? participants.find(p=>p.name===w.name && p.teamId===w.teamId) : null;
+      html += `<div class="field"><label>${medal} ${pos[0].toUpperCase()+pos.slice(1)} Place</label>
+        <select class="winnerSelect" data-pos="${pos}">
+          <option value="">— Not awarded —</option>
+          ${participants.map(p=>{
+            const team = db.teams.find(t=>t.id===p.teamId);
+            return `<option value="${p.id}" ${selectedP&&selectedP.id===p.id?'selected':''}>#${esc(p.number)} ${esc(p.name)} (${team?esc(team.name):'No team'})</option>`;
+          }).join('')}
+        </select></div>`;
+    });
+    html += `</div>`;
+  } else {
+    html += `<p style="font-size:.74rem;color:var(--ink-soft);margin:0 0 8px;">No candidates registered for this program yet — enter winners manually.</p>`;
+    ['first','second','third'].forEach(pos=>{
+      const w = r?r.winners[pos]:null; const medal = pos==='first'?'🥇':(pos==='second'?'🥈':'🥉');
+      html += `<div class="row2"><div class="field"><label>${medal} ${pos[0].toUpperCase()+pos.slice(1)} — Name</label><input id="mRes_${pos}_name" value="${w&&w.name?esc(w.name):''}"></div>
+      <div class="field"><label>Team</label><select id="mRes_${pos}_team"><option value="">—</option>${teamOptionsHTML(w?w.teamId:null)}</select></div></div>`;
+    });
+  }
+  html += `<div class="section-title" style="margin-top:18px;"><span class="dot"></span><h2 style="font-size:.92rem;">Grades &amp; Participation (Optional)</h2></div>
+    <p style="font-size:.74rem;color:var(--ink-soft);margin:0 0 10px;">Use this for candidates who didn't place 1st–3rd but still earn points — e.g. a quality grade (A/B/C) or simply for taking part.</p>`;
+  if(participants.length){
+    [['gradeA','Grade A'],['gradeB','Grade B'],['gradeC','Grade C'],['participation','Participation']].forEach(([key,label])=>{
+      const checkedIds = new Set((r&&r.grades&&r.grades[key]?r.grades[key]:[]).map(e=>{
+        const match = participants.find(p=>p.name===e.name && p.teamId===e.teamId);
+        return match?match.id:null;
+      }));
+      html += `<div class="cat-group" data-key="${key}">
+        <div class="cat-group-head"><b style="font-size:.84rem;color:var(--green-800);">${label}</b></div>
+        <div class="checkgrid" style="grid-template-columns:1fr 1fr;">
+          ${participants.map(p=>`<label><input type="checkbox" class="gradeCheck_${key}" value="${p.id}" ${checkedIds.has(p.id)?'checked':''}> #${esc(p.number)} ${esc(p.name)}</label>`).join('')}
+        </div>
+      </div>`;
+    });
+  } else {
+    html += gradeSectionHTML('gradeA','Grade A',r) + gradeSectionHTML('gradeB','Grade B',r) + gradeSectionHTML('gradeC','Grade C',r) + gradeSectionHTML('participation','Participation',r);
+  }
+  return html;
+}
+function openResultForm(id, presetProgramId){
   const r = id ? db.results.find(x=>x.id===id) : null;
+  const initialProgramId = r ? r.programId : (presetProgramId || '');
+  const initProg = db.programs.find(p=>p.id===initialProgramId);
+  const initGender = r ? r.gender : (initProg && initProg.categories.length===1 ? initProg.categories[0].gender : GENDERS[0]);
+  const initAge = r ? r.age : (initProg && initProg.categories.length===1 ? initProg.categories[0].age : AGES[0]);
   document.getElementById('modalContent').innerHTML = `
     <h3>${r?'Edit Result':'Add Result'}</h3>
     <div class="field"><label>Program</label><select id="mResProgram" onchange="resProgramChanged()">
-      <option value="">Select program</option>${programOptionsHTML(r?r.programId:null)}
+      <option value="">Select program</option>${programOptionsHTML(initialProgramId)}
     </select></div>
     <div class="row2">
-      <div class="field"><label>Gender Category</label><select id="mResGender">${GENDERS.map(g=>`<option ${r&&r.gender===g?'selected':''}>${g}</option>`).join('')}</select></div>
-      <div class="field"><label>Age Group</label><select id="mResAge">${AGES.map(a=>`<option ${r&&r.age===a?'selected':''}>${a}</option>`).join('')}</select></div>
+      <div class="field"><label>Gender Category</label><select id="mResGender">${GENDERS.map(g=>`<option ${initGender===g?'selected':''}>${g}</option>`).join('')}</select></div>
+      <div class="field"><label>Age Group</label><select id="mResAge">${AGES.map(a=>`<option ${initAge===a?'selected':''}>${a}</option>`).join('')}</select></div>
     </div>
-    <div class="section-title" style="margin-top:18px;"><span class="dot"></span><h2 style="font-size:.92rem;">Winners</h2></div>
-    ${['first','second','third'].map(pos=>{
-      const w = r?r.winners[pos]:null; const medal = pos==='first'?'🥇':(pos==='second'?'🥈':'🥉');
-      return `<div class="row2"><div class="field"><label>${medal} ${pos[0].toUpperCase()+pos.slice(1)} — Name</label><input id="mRes_${pos}_name" value="${w&&w.name?esc(w.name):''}"></div>
-      <div class="field"><label>Team</label><select id="mRes_${pos}_team"><option value="">—</option>${teamOptionsHTML(w?w.teamId:null)}</select></div></div>`;
-    }).join('')}
-    <p style="font-size:.78rem;color:var(--ink-soft);margin:14px 0 6px;">Optional: Grade / Participation entries are managed after saving the result, from the result row.</p>
-    <button class="btn btn-primary btn-block" onclick="saveResult('${id||''}')">Save Result</button>`;
+    <div id="winnersGradesWrap">${winnersAndGradesHTML(initialProgramId, r)}</div>
+    <button class="btn btn-primary btn-block" onclick="saveResult('${id||''}')" style="margin-top:14px;">Save Result</button>`;
   openModal();
+}
+function addResultForProgram(programId){
+  adminTab = 'results';
+  document.querySelectorAll('#adminTabs button').forEach(b=>b.classList.toggle('active', b.dataset.tab==='results'));
+  openResultForm(null, programId);
 }
 function resProgramChanged(){
   const pid = document.getElementById('mResProgram').value;
@@ -1099,17 +1215,45 @@ function resProgramChanged(){
     document.getElementById('mResGender').value = prog.categories[0].gender;
     document.getElementById('mResAge').value = prog.categories[0].age;
   }
+  document.getElementById('winnersGradesWrap').innerHTML = winnersAndGradesHTML(pid, null);
 }
 function saveResult(id){
   const programId = document.getElementById('mResProgram').value;
   if(!programId){ toast('Please select a program'); return; }
+  const participants = getProgramParticipants(programId);
   const winners = {};
-  ['first','second','third'].forEach(pos=>{
-    const name = document.getElementById('mRes_'+pos+'_name').value.trim();
-    const teamId = document.getElementById('mRes_'+pos+'_team').value || null;
-    if(name) winners[pos] = {name, teamId};
-  });
-  const data = {programId, gender:document.getElementById('mResGender').value, age:document.getElementById('mResAge').value, winners, grades: (id? db.results.find(x=>x.id===id).grades : {gradeA:[],gradeB:[],gradeC:[],participation:[]}), datetime: id? db.results.find(x=>x.id===id).datetime : new Date().toISOString()};
+  if(participants.length){
+    document.querySelectorAll('.winnerSelect').forEach(sel=>{
+      const pos = sel.dataset.pos, pid = sel.value;
+      if(pid){ const p = participants.find(x=>x.id===pid); if(p) winners[pos] = {name:p.name, teamId:p.teamId}; }
+    });
+  } else {
+    ['first','second','third'].forEach(pos=>{
+      const name = document.getElementById('mRes_'+pos+'_name').value.trim();
+      const teamId = document.getElementById('mRes_'+pos+'_team').value || null;
+      if(name) winners[pos] = {name, teamId};
+    });
+  }
+  const grades = {};
+  if(participants.length){
+    ['gradeA','gradeB','gradeC','participation'].forEach(key=>{
+      const checks = document.querySelectorAll('.gradeCheck_'+key+':checked');
+      grades[key] = [...checks].map(cb=>{
+        const p = participants.find(x=>x.id===cb.value);
+        return p ? {name:p.name, teamId:p.teamId} : null;
+      }).filter(Boolean);
+    });
+  } else {
+    ['gradeA','gradeB','gradeC','participation'].forEach(key=>{
+      const rows = document.querySelectorAll('#gradeRows_'+key+' .grade-row');
+      grades[key] = [...rows].map(row=>{
+        const name = row.querySelector('.gradeNameInput').value.trim();
+        const teamId = row.querySelector('.gradeTeamSelect').value || null;
+        return {name, teamId};
+      }).filter(e=>e.name || e.teamId);
+    });
+  }
+  const data = {programId, gender:document.getElementById('mResGender').value, age:document.getElementById('mResAge').value, winners, grades, datetime: id? db.results.find(x=>x.id===id).datetime : new Date().toISOString()};
   if(id){ const r=db.results.find(x=>x.id===id); Object.assign(r,data); }
   else { db.results.push({id:uid(), ...data}); }
   saveDB(); closeModal(); renderAdminTab(); toast('Result saved');
