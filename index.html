@@ -278,6 +278,14 @@ button{font-family:inherit;cursor:pointer;border:none;}
 .empty b{display:block;color:var(--ink);margin-bottom:4px;}
 .empty small{font-size:.8rem;}
 
+/* ---------- category group picker ---------- */
+.cat-group{border:1px solid var(--line);border-radius:12px;padding:10px;background:var(--bg);margin-bottom:10px;}
+.cat-group-head{display:flex;align-items:center;margin-bottom:8px;}
+.cat-all{display:flex;align-items:center;gap:8px;font-size:.84rem;font-weight:700;color:var(--green-800);}
+.cat-all input{width:16px;height:16px;}
+.cat-group .checkgrid{margin-top:0;}
+.type-tag{font-size:.68rem;background:var(--gold-100);color:var(--gold-700);padding:2px 9px;border-radius:20px;font-weight:700;margin-right:5px;}
+
 /* ---------- dashboard grid ---------- */
 .dash-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:6px;}
 .dash-grid .d-card{background:var(--bg-panel);border:1px solid var(--line);border-radius:14px;padding:14px;}
@@ -424,13 +432,17 @@ button{font-family:inherit;cursor:pointer;border:none;}
 <section class="view" id="view-settings">
   <div class="section-title"><span class="dot"></span><h2>Settings</h2></div>
   <div class="info-card" id="publicSettingsCard">
-    <h3>Data</h3>
+    <h3>Print</h3>
+    <p style="margin-bottom:12px;">Print or save the current view as a PDF.</p>
+    <button class="btn btn-outline btn-block" onclick="window.print()">🖨️ Export / Print as PDF</button>
+  </div>
+  <div class="info-card" id="adminBackupCard" style="display:none;">
+    <h3>Data Backup</h3>
     <p style="margin-bottom:12px;">Export a copy of all current data, or restore from a previously saved backup file.</p>
     <button class="btn btn-outline btn-block" style="margin-bottom:8px;" onclick="exportJSON()">⬇️ Export Backup (JSON)</button>
-    <label class="btn btn-outline btn-block" style="margin-bottom:8px;">⬆️ Restore Backup (JSON)
+    <label class="btn btn-outline btn-block">⬆️ Restore Backup (JSON)
       <input type="file" accept=".json" style="display:none" onchange="importJSON(event)">
     </label>
-    <button class="btn btn-outline btn-block" onclick="window.print()">🖨️ Export / Print as PDF</button>
   </div>
   <div class="info-card" id="adminOnlySettings" style="display:none;">
     <h3>Point Structure</h3>
@@ -462,6 +474,19 @@ button{font-family:inherit;cursor:pointer;border:none;}
     </div>
     <button class="btn btn-primary btn-block" onclick="changePassword()">Update Password</button>
   </div>
+  <div class="info-card" id="changePinCard" style="display:none;">
+    <h3>Change Security PIN (Step 2 Login)</h3>
+    <div class="field"><label>Current PIN</label>
+      <div class="pwd-wrap"><input type="password" id="cPinCurrent" inputmode="numeric"><button onclick="togglePwd('cPinCurrent',this)">👁</button></div>
+    </div>
+    <div class="field"><label>New PIN</label>
+      <div class="pwd-wrap"><input type="password" id="cPinNew" inputmode="numeric"><button onclick="togglePwd('cPinNew',this)">👁</button></div>
+    </div>
+    <div class="field"><label>Confirm New PIN</label>
+      <div class="pwd-wrap"><input type="password" id="cPinConfirm" inputmode="numeric"><button onclick="togglePwd('cPinConfirm',this)">👁</button></div>
+    </div>
+    <button class="btn btn-primary btn-block" onclick="changePin()">Update PIN</button>
+  </div>
   <div class="info-card" id="logoutCard" style="display:none;">
     <button class="btn btn-danger btn-block" onclick="adminLogout()">Log Out of Admin</button>
   </div>
@@ -470,12 +495,20 @@ button{font-family:inherit;cursor:pointer;border:none;}
 <!-- ============ ADMIN LOGIN ============ -->
 <section class="view" id="view-adminGate">
   <div class="section-title"><span class="dot"></span><h2>Admin Login</h2></div>
-  <div class="info-card">
+  <div class="info-card" id="loginStep1">
+    <p class="eyebrow">Step 1 of 2</p>
     <div class="field"><label>Password</label>
       <div class="pwd-wrap"><input type="password" id="loginPwd" placeholder="Enter admin password"><button onclick="togglePwd('loginPwd',this)">👁</button></div>
     </div>
-    <button class="btn btn-primary btn-block" onclick="adminLogin()">Log In</button>
-    <p style="font-size:.72rem;color:var(--ink-soft);margin-top:12px;text-align:center;">Default password: admin123 — please change it after first login.</p>
+    <button class="btn btn-primary btn-block" onclick="checkAdminPassword()">Continue</button>
+  </div>
+  <div class="info-card" id="loginStep2" style="display:none;">
+    <p class="eyebrow">Step 2 of 2</p>
+    <div class="field"><label>Security PIN</label>
+      <div class="pwd-wrap"><input type="password" id="loginPin" inputmode="numeric" placeholder="Enter PIN"><button onclick="togglePwd('loginPin',this)">👁</button></div>
+    </div>
+    <button class="btn btn-primary btn-block" onclick="verifyAdminPin()">Verify &amp; Log In</button>
+    <button class="btn btn-outline btn-block" style="margin-top:8px;" onclick="backToLoginStep1()">Back</button>
   </div>
 </section>
 
@@ -528,7 +561,8 @@ function defaultDB(){
     results:[],
     settings:{
       points:{first:10,second:7,third:5,participation:1,gradeA:5,gradeB:3,gradeC:1},
-      adminPassword:'admin123'
+      adminPassword:'admin123',
+      adminPin:'1234'
     },
     prevRanks:{}
   };
@@ -540,6 +574,7 @@ function loadDB(){
     if(!raw) return defaultDB();
     const parsed = JSON.parse(raw);
     if(!parsed.teams || !parsed.settings) return defaultDB();
+    if(!parsed.settings.adminPin) parsed.settings.adminPin = '1234';
     return parsed;
   }catch(e){ return defaultDB(); }
 }
@@ -573,7 +608,7 @@ function showView(name){
   window.scrollTo(0,0);
 }
 function openAdminGate(){
-  if(isAdmin){ showView('dashboard'); } else { showView('adminGate'); }
+  if(isAdmin){ showView('dashboard'); } else { resetLoginGate(); showView('adminGate'); }
 }
 function toast(msg){
   const t = document.getElementById('toast');
@@ -726,6 +761,7 @@ function renderProgramsView(reset){
         <div><span class="code">${esc(p.code)}</span><h3>${esc(p.name)}</h3></div>
       </div>
       <div style="margin:8px 0;">${p.categories.map(c=>`<span class="tagchip tag-${c.gender.toLowerCase()}" style="margin-right:5px;margin-bottom:5px;display:inline-block;">${c.gender} · ${c.age}</span>`).join('')}</div>
+      <div style="margin-bottom:6px;">${p.single?'<span class="type-tag">Single</span>':''}${p.group?'<span class="type-tag">Group</span>':''}</div>
       <div class="meta">${p.description?esc(p.description)+' · ':''}⏱ ${esc(p.duration||'—')} &nbsp;·&nbsp; Max ${p.maxParticipants||'—'} participants</div>
     </div>`).join('') : emptyState('📋','No programs found','Programs will appear here once added by the admin.');
 }
@@ -733,8 +769,10 @@ function setProgFilter(key,val){ progFilter[key]=val; renderProgramsView(); }
 
 /* ===================== SETTINGS VIEW ===================== */
 function renderSettingsView(){
+  document.getElementById('adminBackupCard').style.display = isAdmin?'block':'none';
   document.getElementById('adminOnlySettings').style.display = isAdmin?'block':'none';
   document.getElementById('changePwCard').style.display = isAdmin?'block':'none';
+  document.getElementById('changePinCard').style.display = isAdmin?'block':'none';
   document.getElementById('logoutCard').style.display = isAdmin?'block':'none';
   if(isAdmin){
     const p = db.settings.points;
@@ -768,17 +806,40 @@ function changePassword(){
   document.getElementById('cpCurrent').value=document.getElementById('cpNew').value=document.getElementById('cpConfirm').value='';
   toast('Password updated successfully');
 }
+function changePin(){
+  const cur=document.getElementById('cPinCurrent').value, nw=document.getElementById('cPinNew').value, cf=document.getElementById('cPinConfirm').value;
+  if(cur!==db.settings.adminPin){ toast('Current PIN is incorrect'); return; }
+  if(!nw || nw.length<4){ toast('PIN must be at least 4 digits'); return; }
+  if(nw!==cf){ toast('PINs do not match'); return; }
+  db.settings.adminPin = nw; saveDB();
+  document.getElementById('cPinCurrent').value=document.getElementById('cPinNew').value=document.getElementById('cPinConfirm').value='';
+  toast('PIN updated successfully');
+}
 function adminLogout(){ isAdmin=false; sessionStorage.removeItem('mrms_admin'); document.getElementById('drawerUserTag').textContent='Public View'; showView('home'); toast('Logged out'); }
 
-/* ===================== ADMIN LOGIN ===================== */
-function adminLogin(){
+/* ===================== ADMIN LOGIN (2-step: Password + PIN) ===================== */
+function checkAdminPassword(){
   const val = document.getElementById('loginPwd').value;
   if(val === db.settings.adminPassword){
+    document.getElementById('loginStep1').style.display='none';
+    document.getElementById('loginStep2').style.display='block';
+    document.getElementById('loginPwd').value='';
+  } else { toast('Incorrect password'); }
+}
+function verifyAdminPin(){
+  const pin = document.getElementById('loginPin').value;
+  if(pin === db.settings.adminPin){
     isAdmin=true; sessionStorage.setItem('mrms_admin','1');
     document.getElementById('drawerUserTag').textContent='Administrator';
-    document.getElementById('loginPwd').value='';
+    document.getElementById('loginPin').value='';
+    resetLoginGate();
     showView('dashboard'); toast('Welcome, Administrator');
-  } else { toast('Incorrect password'); }
+  } else { toast('Incorrect PIN'); }
+}
+function backToLoginStep1(){ resetLoginGate(); document.getElementById('loginPin').value=''; }
+function resetLoginGate(){
+  document.getElementById('loginStep1').style.display='block';
+  document.getElementById('loginStep2').style.display='none';
 }
 
 /* ===================== BACKUP / RESTORE ===================== */
@@ -878,7 +939,7 @@ function programsListHTML(){
   if(!db.programs.length) return emptyState('📋','No programs yet','Tap + to add a program.');
   return db.programs.map(p=>`
     <div class="list-row">
-      <div class="lr-info"><b>${esc(p.code)} — ${esc(p.name)}</b><small>${p.categories.map(c=>c.gender+' '+c.age).join(', ')} · ⏱ ${esc(p.duration||'—')}</small></div>
+      <div class="lr-info"><b>${esc(p.code)} — ${esc(p.name)}</b><small>${p.categories.map(c=>c.gender+' '+c.age).join(', ')} · ⏱ ${esc(p.duration||'—')} ${p.maxParticipants?'· Max '+p.maxParticipants:''} ${p.single?'· Single':''}${p.group?'· Group':''}</small></div>
       <div class="lr-actions">
         <button class="icon-btn" onclick="openProgramForm('${p.id}')">✏️</button>
         <button class="icon-btn" ondblclick="deleteProgram('${p.id}')" title="Double-tap to delete">🗑️</button>
@@ -888,11 +949,30 @@ function programsListHTML(){
 function categoryCheckboxesHTML(selected){
   selected = selected||[];
   let html = '';
-  GENDERS.forEach(g=>AGES.forEach(a=>{
-    const checked = selected.some(c=>c.gender===g&&c.age===a) ? 'checked' : '';
-    html += `<label><input type="checkbox" data-g="${g}" data-a="${a}" ${checked}> ${g} ${a}</label>`;
-  }));
+  GENDERS.forEach(g=>{
+    const allChecked = AGES.every(a=> selected.some(c=>c.gender===g&&c.age===a));
+    html += `<div class="cat-group">
+      <div class="cat-group-head">
+        <label class="cat-all"><input type="checkbox" class="catAllToggle" data-g="${g}" ${allChecked?'checked':''} onchange="toggleCatGroup('${g}',this.checked)"> ${g} — select all</label>
+      </div>
+      <div class="checkgrid">
+        ${AGES.map(a=>{
+          const checked = selected.some(c=>c.gender===g&&c.age===a) ? 'checked' : '';
+          return `<label><input type="checkbox" class="catCheckbox" data-g="${g}" data-a="${a}" ${checked} onchange="syncCatGroupHead('${g}')"> ${a}</label>`;
+        }).join('')}
+      </div>
+    </div>`;
+  });
   return html;
+}
+function toggleCatGroup(g, checked){
+  document.querySelectorAll('.catCheckbox[data-g="'+g+'"]').forEach(cb=>cb.checked=checked);
+}
+function syncCatGroupHead(g){
+  const boxes = document.querySelectorAll('.catCheckbox[data-g="'+g+'"]');
+  const allChecked = [...boxes].every(cb=>cb.checked);
+  const head = document.querySelector('.catAllToggle[data-g="'+g+'"]');
+  if(head) head.checked = allChecked;
 }
 function openProgramForm(id){
   const p = id ? db.programs.find(x=>x.id===id) : null;
@@ -905,7 +985,13 @@ function openProgramForm(id){
     <div class="field"><label>Program Name</label><input id="mProgName" value="${p?esc(p.name):''}"></div>
     <div class="field"><label>Description (optional)</label><textarea id="mProgDesc" rows="2">${p&&p.description?esc(p.description):''}</textarea></div>
     <div class="field"><label>Maximum Participants</label><input type="number" id="mProgMax" value="${p?p.maxParticipants:''}"></div>
-    <div class="field"><label>Categories</label><div class="checkgrid" id="mProgCats">${categoryCheckboxesHTML(p?p.categories:[])}</div></div>
+    <div class="field"><label>Program Type</label>
+      <div style="display:flex;gap:18px;margin-top:6px;">
+        <label style="display:flex;align-items:center;gap:6px;font-size:.85rem;"><input type="checkbox" id="mProgSingle" ${p&&p.single?'checked':''}> Single</label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:.85rem;"><input type="checkbox" id="mProgGroup" ${p&&p.group?'checked':''}> Group</label>
+      </div>
+    </div>
+    <div class="field"><label>Categories</label><div id="mProgCats">${categoryCheckboxesHTML(p?p.categories:[])}</div></div>
     <button class="btn btn-primary btn-block" onclick="saveProgram('${id||''}')" style="margin-top:14px;">Save Program</button>`;
   openModal();
 }
@@ -913,8 +999,8 @@ function saveProgram(id){
   const code = document.getElementById('mProgCode').value.trim();
   const name = document.getElementById('mProgName').value.trim();
   if(!code||!name){ toast('Code and name are required'); return; }
-  const cats = [...document.querySelectorAll('#mProgCats input:checked')].map(cb=>({gender:cb.dataset.g, age:cb.dataset.a}));
-  const data = {code,name,description:document.getElementById('mProgDesc').value.trim(),duration:document.getElementById('mProgDur').value.trim(),maxParticipants:+document.getElementById('mProgMax').value||null,categories:cats};
+  const cats = [...document.querySelectorAll('#mProgCats .catCheckbox:checked')].map(cb=>({gender:cb.dataset.g, age:cb.dataset.a}));
+  const data = {code,name,description:document.getElementById('mProgDesc').value.trim(),duration:document.getElementById('mProgDur').value.trim(),maxParticipants:+document.getElementById('mProgMax').value||null,single:document.getElementById('mProgSingle').checked,group:document.getElementById('mProgGroup').checked,categories:cats};
   if(id){ const p=db.programs.find(x=>x.id===id); Object.assign(p,data); }
   else { db.programs.push({id:uid(), ...data}); }
   saveDB(); closeModal(); renderAdminTab(); toast('Program saved');
