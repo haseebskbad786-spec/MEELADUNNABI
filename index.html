@@ -152,6 +152,8 @@ button{font-family:inherit;cursor:pointer;border:none;}
 .champion-card .crown{font-size:2rem;}
 .champion-card b{font-size:1.05rem;display:block;}
 .champion-card small{opacity:.8;}
+.spot-fade{animation:spotFadeIn .5s ease;}
+@keyframes spotFadeIn{from{opacity:.25;transform:translateY(5px);}to{opacity:1;transform:translateY(0);}}
 
 /* ---------- cards ---------- */
 .card{
@@ -166,6 +168,9 @@ button{font-family:inherit;cursor:pointer;border:none;}
 .tag-boys{background:#e3edf7;color:#2a5d9c;}
 .tag-girls{background:#fbe7ef;color:#b5306e;}
 .tag-general{background:#e3f1e7;color:#1b7a4c;}
+.tag-age{background:var(--gold-100);color:var(--gold-700);}
+.cat-badge-row{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;}
+.cat-badge-row .tagchip{font-size:.74rem;padding:4px 11px;font-weight:700;}
 .winners{margin-top:10px;display:flex;flex-direction:column;gap:6px;}
 .winner-row{display:flex;align-items:center;gap:10px;font-size:.88rem;background:var(--bg);border-radius:10px;padding:7px 10px;}
 .medal{font-size:1.1rem;width:22px;text-align:center;}
@@ -292,23 +297,10 @@ button{font-family:inherit;cursor:pointer;border:none;}
 .dash-grid .d-card b{font-size:1.4rem;font-family:'JetBrains Mono',monospace;color:var(--green-800);display:block;}
 .dash-grid .d-card span{font-size:.72rem;color:var(--ink-soft);}
 
-#printArea{display:none;padding:26px;background:#fff;color:#152c20;}
-#printArea table{width:100%;border-collapse:collapse;font-size:13px;margin-top:8px;}
-#printArea th,#printArea td{border:1px solid #ccc;padding:6px 8px;text-align:left;}
-#printArea th{background:#e3f1e7;}
-#printArea h1{font-family:'Reem Kufi',sans-serif;color:var(--green-900);font-size:1.3rem;margin:0 0 4px;}
-#printArea h2{font-size:1rem;border-bottom:2px solid var(--gold-500);padding-bottom:4px;margin:20px 0 6px;}
-#printArea .prog-block{page-break-inside:avoid;margin-bottom:18px;}
-
 @media print{
   .app-header,.drawer,.drawer-overlay,.fab,.tabbar,.searchbar,.chiprow,.btn,#toast,.modal-bg,.bg-motif{display:none!important;}
   .view{display:none!important;}
   .view.active{display:block!important;}
-
-  body.printing-special *{visibility:hidden!important;}
-  body.printing-special #printArea,
-  body.printing-special #printArea *{visibility:visible!important;}
-  body.printing-special #printArea{display:block!important;position:absolute!important;left:0;top:0;width:100%;}
 }
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;}}
 </style>
@@ -377,14 +369,7 @@ button{font-family:inherit;cursor:pointer;border:none;}
     </div>
   </div>
 
-  <div class="champion-card" id="championCard" style="display:none;">
-    <div class="crown">👑</div>
-    <div>
-      <small>Current Champion Team</small>
-      <b id="championName">—</b>
-      <small id="championPts"></small>
-    </div>
-  </div>
+  <div class="champion-card" id="homeSpotlight" style="display:none;"></div>
 
   <div class="section-title"><span class="dot"></span><h2>Latest Results</h2></div>
   <div id="latestResults"></div>
@@ -403,6 +388,7 @@ button{font-family:inherit;cursor:pointer;border:none;}
 
 <!-- ============ SCOREBOARD ============ -->
 <section class="view" id="view-scoreboard">
+  <div class="champion-card" id="scoreboardSpotlight" style="display:none;margin-bottom:16px;"></div>
   <div class="section-title"><span class="dot"></span><h2>Live Team Scoreboard</h2></div>
   <div id="scoreboardList"></div>
   <div class="section-title" style="margin-top:28px;"><span class="dot"></span><h2>Category-wise Toppers</h2></div>
@@ -467,10 +453,10 @@ button{font-family:inherit;cursor:pointer;border:none;}
     </label>
   </div>
   <div class="info-card" id="adminPrintCard" style="display:none;">
-    <h3>Print Reports</h3>
-    <p style="margin-bottom:12px;">Dedicated printable sheets — separate from whatever page you're currently viewing.</p>
-    <button class="btn btn-outline btn-block" style="margin-bottom:8px;" onclick="printProgramList()">🖨️ Print Program List</button>
-    <button class="btn btn-outline btn-block" onclick="printParticipantsByProgram()">🖨️ Print Participants by Program (for Team Leaders)</button>
+    <h3>Reports for Printing</h3>
+    <p style="margin-bottom:12px;">Downloads a report file you can open in any browser, print, save as PDF, or share directly via WhatsApp. This works even when in-page printing is blocked.</p>
+    <button class="btn btn-outline btn-block" style="margin-bottom:8px;" onclick="printProgramList()">⬇️ Download Program List (by Category)</button>
+    <button class="btn btn-outline btn-block" onclick="printParticipantsByProgram()">⬇️ Download Team Sheets (for Team Leaders)</button>
   </div>
   <div class="info-card" id="adminOnlySettings" style="display:none;">
     <h3>Point Structure</h3>
@@ -570,13 +556,14 @@ button{font-family:inherit;cursor:pointer;border:none;}
 </div>
 
 <div id="toast"></div>
-<div id="printArea"></div>
 
 <script>
 /* ===================== DATA LAYER ===================== */
 const GENDERS = ['Boys','Girls','General'];
 const AGES = ['Kids','Sub Junior','Junior','Senior','Super Senior'];
 const CLASSES = [1,2,3,4,5,6,7,8,9,10,11,12];
+const AGE_ICONS = {'Kids':'🧒','Sub Junior':'🎒','Junior':'⭐','Senior':'🔥','Super Senior':'🎓'};
+const GENDER_ICONS = {'Boys':'👦','Girls':'👧','General':'🌐'};
 function classToAge(cls){
   cls = parseInt(cls,10);
   if(cls===1) return 'Kids';
@@ -641,6 +628,7 @@ function toggleDrawer(){
   document.getElementById('hamBtn').classList.toggle('open');
 }
 function showView(name){
+  stopSpotlight();
   document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
   const el = document.getElementById('view-'+name);
   if(el) el.classList.add('active');
@@ -693,6 +681,43 @@ function recalcTeamPoints(){
   });
 }
 
+/* ===================== ROTATING SPOTLIGHT ===================== */
+let spotlightTimer = null;
+function stopSpotlight(){ if(spotlightTimer){ clearInterval(spotlightTimer); spotlightTimer=null; } }
+function computeSpotlightSlides(){
+  if(!db.results.length || !db.teams.length) return [];
+  recalcTeamPoints();
+  const slides = [];
+  const overallTop = [...db.teams].sort((a,b)=>b.points-a.points)[0];
+  if(overallTop && overallTop.points>0) slides.push({label:'🏆 Overall Champion Team', icon:overallTop.symbol, name:overallTop.name, points:overallTop.points});
+  const genderTotals = (typeof computeTeamGenderTotals==='function') ? computeTeamGenderTotals() : {};
+  const boysTop = [...db.teams].map(t=>({t,pts:(genderTotals[t.id]||{}).Boys||0})).sort((a,b)=>b.pts-a.pts)[0];
+  if(boysTop && boysTop.pts>0) slides.push({label:'👦 Top Boys Team', icon:boysTop.t.symbol, name:boysTop.t.name, points:boysTop.pts});
+  const girlsTop = [...db.teams].map(t=>({t,pts:(genderTotals[t.id]||{}).Girls||0})).sort((a,b)=>b.pts-a.pts)[0];
+  if(girlsTop && girlsTop.pts>0) slides.push({label:'👧 Top Girls Team', icon:girlsTop.t.symbol, name:girlsTop.t.name, points:girlsTop.pts});
+  return slides;
+}
+function startSpotlight(elId){
+  stopSpotlight();
+  const el = document.getElementById(elId);
+  if(!el) return;
+  const slides = computeSpotlightSlides();
+  if(!slides.length){ el.style.display='none'; return; }
+  el.style.display = 'flex';
+  let idx = 0;
+  const paint = ()=>{
+    const s = slides[idx % slides.length];
+    el.innerHTML = `<div class="crown">${s.icon}</div><div><small>${s.label}</small><b>${esc(s.name)}</b><small>${s.points} points</small></div>`;
+    el.classList.remove('spot-fade');
+    void el.offsetWidth;
+    el.classList.add('spot-fade');
+  };
+  paint();
+  if(slides.length>1){
+    spotlightTimer = setInterval(()=>{ idx++; paint(); }, 4000);
+  }
+}
+
 /* ===================== HOME ===================== */
 function renderHome(){
   recalcTeamPoints(); saveDB();
@@ -701,13 +726,7 @@ function renderHome(){
   document.getElementById('stTeam').textContent = db.teams.length;
   document.getElementById('stCat').textContent = AGES.length;
 
-  const champ = [...db.teams].sort((a,b)=>b.points-a.points)[0];
-  const cc = document.getElementById('championCard');
-  if(champ && db.results.length){
-    cc.style.display='flex';
-    document.getElementById('championName').textContent = champ.symbol+' '+champ.name;
-    document.getElementById('championPts').textContent = champ.points+' points';
-  } else { cc.style.display='none'; }
+  startSpotlight('homeSpotlight');
 
   const latest = [...db.results].sort((a,b)=> new Date(b.datetime)-new Date(a.datetime)).slice(0,3);
   document.getElementById('latestResults').innerHTML = latest.length
@@ -745,11 +764,13 @@ function resultCardHTML(r){
       <div>
         <span class="code">${esc(prog?prog.code:'—')}</span>
         <h3>${esc(prog?prog.name:'Untitled Program')}</h3>
-        <span class="meta">${r.gender} · ${r.age}</span>
+        <div class="cat-badge-row">
+          <span class="tagchip ${tagClass}">${GENDER_ICONS[r.gender]||''} ${r.gender}</span>
+          ${r.age!=='All' ? `<span class="tagchip tag-age">${AGE_ICONS[r.age]||''} ${r.age}</span>` : ''}
+        </div>
       </div>
-      <span class="tagchip ${tagClass}">${r.gender}</span>
     </div>
-    <div class="winners">${winnersHTML || '<span class="meta">No winners recorded</span>'}${gradesHTML}</div>
+    <div class="winners" style="margin-top:6px;">${winnersHTML || '<span class="meta">No winners recorded</span>'}${gradesHTML}</div>
     <div class="rc-date">${new Date(r.datetime).toLocaleDateString()} ${new Date(r.datetime).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</div>
   </div>`;
 }
@@ -805,6 +826,7 @@ function renderScoreboard(){
   const newRanks={}; sorted.forEach((t,i)=>newRanks[t.id]=i+1);
   db.prevRanks = newRanks; saveDB();
   renderCategoryStats();
+  startSpotlight('scoreboardSpotlight');
 }
 function computeCategoryStats(){
   const pts = db.settings.points;
@@ -840,17 +862,6 @@ function computeCategoryStats(){
   });
   return stats;
 }
-function computeGenderTotals(){
-  const pts = db.settings.points;
-  const totals = {Boys:0, Girls:0, General:0};
-  db.results.forEach(r=>{
-    let sum = 0;
-    ['first','second','third'].forEach(pos=>{ sum += (r.winners[pos]||[]).length * pts[pos]; });
-    ['gradeA','gradeB','gradeC','participation'].forEach(g=>{ sum += (r.grades[g]||[]).length * pts[g]; });
-    totals[r.gender] = (totals[r.gender]||0) + sum;
-  });
-  return totals;
-}
 function computeTeamGenderTotals(){
   const pts = db.settings.points;
   const out = {};
@@ -865,20 +876,30 @@ function computeTeamGenderTotals(){
 function renderCategoryStats(){
   const wrap = document.getElementById('categoryStatsList');
   const stats = computeCategoryStats();
-  const totals = computeGenderTotals();
   const teamGenderTotals = computeTeamGenderTotals();
-  let html = `<div class="dash-grid" style="margin-bottom:16px;">
-    <div class="d-card"><b>${totals.Boys||0}</b><span>Total Boys Points</span></div>
-    <div class="d-card"><b>${totals.Girls||0}</b><span>Total Girls Points</span></div>
+  let maxVal = 1;
+  db.teams.forEach(t=>{
+    const g = teamGenderTotals[t.id] || {Boys:0,Girls:0,General:0};
+    maxVal = Math.max(maxVal, g.Boys, g.Girls, g.General);
+  });
+  const bar = (label,icon,value,color)=>`<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+    <span style="width:46px;font-size:.7rem;color:var(--ink-soft);">${icon} ${label}</span>
+    <div style="flex:1;background:var(--bg);border-radius:6px;height:14px;overflow:hidden;"><div style="height:100%;width:${Math.round((value/maxVal)*100)}%;background:${color};border-radius:6px;"></div></div>
+    <span style="width:32px;text-align:right;font-size:.74rem;font-weight:700;">${value}</span>
   </div>`;
-  html += `<div class="card" style="margin-bottom:6px;">
-    <h3 style="margin:0 0 10px;font-size:.92rem;">Team Points — Boys / Girls / General</h3>
+  let html = `<div class="card" style="margin-bottom:6px;">
+    <h3 style="margin:0 0 12px;font-size:.92rem;">Team Result — Boys vs Girls</h3>
     ${db.teams.map(t=>{
       const g = teamGenderTotals[t.id] || {Boys:0,Girls:0,General:0};
       const total = g.Boys+g.Girls+g.General;
-      return `<div class="list-row" style="margin-bottom:6px;">
-        <div class="lr-info"><b>${t.symbol} ${esc(t.name)}</b><small>Boys: ${g.Boys} · Girls: ${g.Girls} · General: ${g.General}</small></div>
-        <div class="pts" style="font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--green-800);">${total}</div>
+      return `<div style="margin-bottom:16px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+          <b style="font-size:.88rem;">${t.symbol} ${esc(t.name)}</b>
+          <span style="font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--green-800);font-size:.85rem;">${total} pts total</span>
+        </div>
+        ${bar('Boys','👦',g.Boys,'#2a5d9c')}
+        ${bar('Girls','👧',g.Girls,'#b5306e')}
+        ${g.General ? bar('Gen','🌐',g.General,'#1b7a4c') : ''}
       </div>`;
     }).join('') || '<span class="meta">No teams yet</span>'}
   </div>`;
@@ -926,7 +947,7 @@ function renderProgramsView(reset){
       <div class="rc-top">
         <div><span class="code">${esc(p.code)}</span><h3>${esc(p.name)}</h3></div>
       </div>
-      <div style="margin:8px 0;">${p.categories.map(c=>`<span class="tagchip tag-${c.gender.toLowerCase()}" style="margin-right:5px;margin-bottom:5px;display:inline-block;">${c.gender}${c.age==='All'?'':' · '+c.age}</span>`).join('')}</div>
+      <div style="margin:8px 0;">${p.categories.map(c=>`<span class="tagchip tag-${c.gender.toLowerCase()}" style="margin-right:5px;margin-bottom:5px;display:inline-block;">${GENDER_ICONS[c.gender]||''} ${c.gender}${c.age==='All'?'':' · '+(AGE_ICONS[c.age]||'')+' '+c.age}</span>`).join('')}</div>
       <div style="margin-bottom:6px;">${p.single?'<span class="type-tag">Single</span>':''}${p.group?'<span class="type-tag">Group</span>':''}</div>
       <div class="meta">${p.description?esc(p.description)+' · ':''}⏱ ${esc(p.duration||'—')} &nbsp;·&nbsp; Max ${p.maxParticipants||'—'} participants</div>
     </div>`).join('') : emptyState('📋','No programs found','Programs will appear here once added by the admin.');
@@ -1034,48 +1055,92 @@ function importJSON(e){
 }
 
 /* ===================== PRINT REPORTS ===================== */
-function runSpecialPrint(html){
-  document.getElementById('printArea').innerHTML = html;
-  document.body.classList.add('printing-special');
-  const cleanup = ()=>{ document.body.classList.remove('printing-special'); };
-  window.addEventListener('afterprint', cleanup, {once:true});
-  setTimeout(()=>{ window.print(); }, 50);
+function downloadReport(filename, title, bodyHTML){
+  const fullHTML = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${title}</title>
+    <style>
+      body{font-family:Arial,Helvetica,sans-serif;color:#152c20;padding:18px;margin:0;}
+      h1{font-family:Georgia,serif;color:#0b3a2a;font-size:19px;margin:0 0 4px;}
+      h2{font-size:15px;background:#0f4a36;color:#fff;padding:6px 10px;border-radius:4px;margin:18px 0 8px;}
+      h3{font-size:13px;color:#9a6f0f;border-bottom:1px solid #cf9d2e;padding-bottom:3px;margin:12px 0 5px;}
+      p.meta{font-size:11px;color:#666;margin:0 0 10px;}
+      table{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:4px;}
+      th,td{border:1px solid #bbb;padding:5px 7px;text-align:left;}
+      th{background:#e3f1e7;}
+      .cat-block{page-break-inside:avoid;margin-bottom:10px;}
+      .team-block{page-break-before:always;}
+      .team-block:first-of-type{page-break-before:auto;}
+      .print-hint{background:#fbf0d4;border:1px solid #cf9d2e;color:#9a6f0f;padding:10px 14px;border-radius:8px;font-size:12px;margin-bottom:16px;}
+      @media print{ .print-hint{display:none;} }
+    </style></head><body>
+    <div class="print-hint">📲 To print or save as PDF: tap your browser's menu (⋮ or ⋯) and choose "Print" or "Share".</div>
+    ${bodyHTML}</body></html>`;
+  const blob = new Blob([fullHTML], {type:'text/html'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  toast('Report downloaded — open it from your Downloads/Files app');
+  setTimeout(()=>URL.revokeObjectURL(url), 30000);
 }
 function printProgramList(){
   if(!db.programs.length){ toast('No programs to print'); return; }
-  const html = `<h1>Meeladunnabi — Program List</h1>
-    <p style="font-size:.8rem;color:#555;margin:0 0 6px;">Generated ${new Date().toLocaleDateString()}</p>
-    <table>
-      <thead><tr><th>Code</th><th>Program Name</th><th>Category</th><th>Duration</th><th>Type</th><th>Max</th></tr></thead>
-      <tbody>${db.programs.map(p=>`<tr>
-        <td>${esc(p.code)}</td>
-        <td>${esc(p.name)}</td>
-        <td>${p.categories.map(c=>c.gender+(c.age==='All'?'':' '+c.age)).join(', ')}</td>
-        <td>${esc(p.duration||'—')}</td>
-        <td>${[p.single?'Single':'',p.group?'Group':''].filter(Boolean).join(' / ')||'—'}</td>
-        <td>${p.maxParticipants||'—'}</td>
-      </tr>`).join('')}</tbody>
-    </table>`;
-  runSpecialPrint(html);
+  let html = `<h1>Meeladunnabi — Program List by Category</h1><p class="meta">Generated ${new Date().toLocaleDateString()}</p>`;
+  ['Boys','Girls'].forEach(gender=>{
+    AGES.forEach(age=>{
+      const progs = db.programs.filter(p=>p.categories.some(c=>c.gender===gender && c.age===age));
+      if(!progs.length) return;
+      html += `<div class="cat-block"><h2>${gender} — ${age}</h2>
+        <table><thead><tr><th>Code</th><th>Program Name</th><th>Duration</th><th>Type</th><th>Max</th></tr></thead>
+        <tbody>${progs.map(p=>`<tr><td>${esc(p.code)}</td><td>${esc(p.name)}</td><td>${esc(p.duration||'—')}</td><td>${[p.single?'Single':'',p.group?'Group':''].filter(Boolean).join('/')||'—'}</td><td>${p.maxParticipants||'—'}</td></tr>`).join('')}</tbody></table>
+      </div>`;
+    });
+  });
+  const generalProgs = db.programs.filter(p=>p.categories.some(c=>c.gender==='General'));
+  if(generalProgs.length){
+    html += `<div class="cat-block"><h2>General — Open to All</h2>
+      <table><thead><tr><th>Code</th><th>Program Name</th><th>Duration</th><th>Type</th><th>Max</th></tr></thead>
+      <tbody>${generalProgs.map(p=>`<tr><td>${esc(p.code)}</td><td>${esc(p.name)}</td><td>${esc(p.duration||'—')}</td><td>${[p.single?'Single':'',p.group?'Group':''].filter(Boolean).join('/')||'—'}</td><td>${p.maxParticipants||'—'}</td></tr>`).join('')}</tbody></table>
+    </div>`;
+  }
+  downloadReport('Program_List.html', 'Program List', html);
 }
 function printParticipantsByProgram(){
-  if(!db.programs.length){ toast('No programs to print'); return; }
-  let html = `<h1>Meeladunnabi — Participants by Program</h1>
-    <p style="font-size:.8rem;color:#555;margin:0 0 6px;">For Team Leaders · Generated ${new Date().toLocaleDateString()}</p>`;
-  db.programs.forEach(p=>{
-    const parts = db.participants.filter(pa=>(pa.programIds||[]).includes(p.id));
-    html += `<div class="prog-block">
-      <h2>${esc(p.code)} — ${esc(p.name)}</h2>
-      ${parts.length ? `<table>
-        <thead><tr><th>#</th><th>Name</th><th>Category</th><th>Class</th><th>Team</th></tr></thead>
-        <tbody>${parts.map(pa=>{
-          const team = db.teams.find(t=>t.id===pa.teamId);
-          return `<tr><td>${esc(pa.number)}</td><td>${esc(pa.name)}</td><td>${pa.gender}${pa.gender==='General'?'':' '+pa.age}</td><td>${esc(pa.cls||'—')}</td><td>${team?esc(team.name):'—'}</td></tr>`;
-        }).join('')}</tbody>
-      </table>` : `<p style="font-size:12px;color:#888;">No candidates registered yet.</p>`}
-    </div>`;
+  if(!db.teams.length){ toast('No teams to print'); return; }
+  let html = `<h1>Meeladunnabi — Team Participant Sheets</h1><p class="meta">For Team Leaders · Generated ${new Date().toLocaleDateString()}</p>`;
+  db.teams.forEach(team=>{
+    html += `<div class="team-block"><h1 style="font-size:17px;">${team.symbol} ${esc(team.name)}</h1>`;
+    let anyContent = false;
+    ['Boys','Girls'].forEach(gender=>{
+      AGES.forEach(age=>{
+        const progs = db.programs.filter(p=>p.categories.some(c=>c.gender===gender && c.age===age));
+        progs.forEach(p=>{
+          const parts = db.participants.filter(pa=>pa.teamId===team.id && pa.gender===gender && pa.age===age && (pa.programIds||[]).includes(p.id));
+          if(!parts.length) return;
+          anyContent = true;
+          html += `<div class="cat-block"><h2>${gender} — ${age}</h2><h3>${esc(p.code)} — ${esc(p.name)}</h3>
+            <table><thead><tr><th>#</th><th>Name</th><th>Class</th></tr></thead>
+            <tbody>${parts.map(pa=>`<tr><td>${esc(pa.number)}</td><td>${esc(pa.name)}</td><td>${esc(pa.cls||'—')}</td></tr>`).join('')}</tbody></table>
+          </div>`;
+        });
+      });
+    });
+    const generalProgs = db.programs.filter(p=>p.categories.some(c=>c.gender==='General'));
+    generalProgs.forEach(p=>{
+      const parts = db.participants.filter(pa=>pa.teamId===team.id && pa.gender==='General' && (pa.programIds||[]).includes(p.id));
+      if(!parts.length) return;
+      anyContent = true;
+      html += `<div class="cat-block"><h2>General</h2><h3>${esc(p.code)} — ${esc(p.name)}</h3>
+        <table><thead><tr><th>#</th><th>Name</th><th>Class</th></tr></thead>
+        <tbody>${parts.map(pa=>`<tr><td>${esc(pa.number)}</td><td>${esc(pa.name)}</td><td>${esc(pa.cls||'—')}</td></tr>`).join('')}</tbody></table>
+      </div>`;
+    });
+    if(!anyContent) html += `<p style="font-size:12px;color:#888;">No candidates registered for this team yet.</p>`;
+    html += `</div>`;
   });
-  runSpecialPrint(html);
+  downloadReport('Team_Sheets.html', 'Team Participant Sheets', html);
 }
 
 /* ===================== ADMIN DASHBOARD ===================== */
@@ -1346,9 +1411,12 @@ function buildManualRowsFromResult(r){
   });
   return rows;
 }
-function getCategoryParticipants(gender, age){
-  if(gender==='General') return db.participants.filter(p=>p.gender==='General');
-  return db.participants.filter(p=>p.gender===gender && p.age===age);
+function getResultCandidates(programId, gender, age){
+  return db.participants.filter(p=>{
+    if(!(p.programIds||[]).includes(programId)) return false;
+    if(gender==='General') return p.gender==='General';
+    return p.gender===gender && p.age===age;
+  });
 }
 function getAssignmentForParticipant(r, participant){
   if(!r) return '';
@@ -1360,7 +1428,7 @@ function getAssignmentForParticipant(r, participant){
   return '';
 }
 function winnersAndGradesHTML(programId, gender, age, r){
-  const participants = getCategoryParticipants(gender, age);
+  const participants = getResultCandidates(programId, gender, age);
   let html = `<div class="section-title" style="margin-top:18px;"><span class="dot"></span><h2 style="font-size:.92rem;">Result Entry</h2></div>`;
   if(participants.length){
     const pts = db.settings.points;
@@ -1383,7 +1451,7 @@ function winnersAndGradesHTML(programId, gender, age, r){
       </div>`;
     });
   } else {
-    html += `<p style="font-size:.74rem;color:var(--ink-soft);margin:0 0 10px;">No candidates registered for this program &amp; category yet — add entries manually.</p>
+    html += `<p style="font-size:.74rem;color:var(--ink-soft);margin:0 0 10px;">No candidates have been registered for this specific program yet — add entries manually, or go to Participants and tick this program for the relevant candidates.</p>
       <div id="manualRows">${buildManualRowsFromResult(r)}</div>
       <button type="button" class="btn btn-sm btn-outline" onclick="addManualRow()">+ Add Entry</button>`;
   }
@@ -1464,7 +1532,7 @@ function saveResult(id){
   const age = document.getElementById('mResAge').value;
   const dup = db.results.find(r=>r.programId===programId && r.gender===gender && r.age===age && r.id!==id);
   if(dup){ toast('Result already exists for this program & category'); return; }
-  const participants = getCategoryParticipants(gender, age);
+  const participants = getResultCandidates(programId, gender, age);
   const winners = {first:[],second:[],third:[]};
   const grades = {gradeA:[],gradeB:[],gradeC:[],participation:[]};
   if(participants.length){
