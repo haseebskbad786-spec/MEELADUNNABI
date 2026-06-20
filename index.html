@@ -6,6 +6,7 @@
 <title>Meeladunnabi Result Management System</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Reem+Kufi:wght@400..700&family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 :root{
   --bg:#fbf7ea;
@@ -175,6 +176,7 @@ button{font-family:inherit;cursor:pointer;border:none;}
 .winner-row{display:flex;align-items:center;gap:10px;font-size:.88rem;background:var(--bg);border-radius:10px;padding:7px 10px;}
 .medal{font-size:1.1rem;width:22px;text-align:center;}
 .winner-row b{flex:1;}
+.winner-row .cand-class{font-weight:500;font-size:.74rem;color:var(--ink-soft);}
 .winner-row .pts{font-family:'JetBrains Mono',monospace;font-size:.74rem;color:var(--gold-700);font-weight:700;}
 .winner-row .team-tag{font-size:.7rem;color:var(--ink-soft);}
 .rc-date{margin-top:8px;font-size:.68rem;color:var(--ink-soft);text-align:right;}
@@ -444,6 +446,14 @@ button{font-family:inherit;cursor:pointer;border:none;}
     <p style="margin-bottom:12px;">Print or save the current view as a PDF.</p>
     <button class="btn btn-outline btn-block" onclick="window.print()">🖨️ Export / Print as PDF</button>
   </div>
+  <div class="info-card" id="adminExcelCard" style="display:none;">
+    <h3>Bulk Import Participants (Excel)</h3>
+    <p style="margin-bottom:12px;">Download the template, fill in Name/Class/Team/Programs for all candidates, then upload it here — much faster than adding one by one.</p>
+    <button class="btn btn-outline btn-block" style="margin-bottom:8px;" onclick="downloadExcelTemplate()">⬇️ Download Excel Template</button>
+    <label class="btn btn-gold btn-block">📤 Upload Filled Excel File
+      <input type="file" accept=".xlsx,.xls" style="display:none" onchange="importParticipantsFromExcel(event)">
+    </label>
+  </div>
   <div class="info-card" id="adminBackupCard" style="display:none;">
     <h3>Data Backup</h3>
     <p style="margin-bottom:12px;">Export a copy of all current data, or restore from a previously saved backup file.</p>
@@ -456,7 +466,7 @@ button{font-family:inherit;cursor:pointer;border:none;}
     <h3>Reports for Printing</h3>
     <p style="margin-bottom:12px;">Downloads a report file you can open in any browser, print, save as PDF, or share directly via WhatsApp. This works even when in-page printing is blocked.</p>
     <button class="btn btn-outline btn-block" style="margin-bottom:8px;" onclick="printProgramList()">⬇️ Download Program List (by Category)</button>
-    <button class="btn btn-outline btn-block" onclick="printParticipantsByProgram()">⬇️ Download Team Sheets (for Team Leaders)</button>
+    <button class="btn btn-outline btn-block" onclick="openTeamSheetSelector()">⬇️ Download Team Sheet (choose Team &amp; Category)</button>
   </div>
   <div class="info-card" id="adminOnlySettings" style="display:none;">
     <h3>Point Structure</h3>
@@ -562,6 +572,7 @@ button{font-family:inherit;cursor:pointer;border:none;}
 const GENDERS = ['Boys','Girls','General'];
 const AGES = ['Kids','Sub Junior','Junior','Senior','Super Senior'];
 const CLASSES = [1,2,3,4,5,6,7,8,9,10,11,12];
+const DIVISIONS = ['A','B','C','D','E','F'];
 const AGE_ICONS = {'Kids':'🧒','Sub Junior':'🎒','Junior':'⭐','Senior':'🔥','Super Senior':'🎓'};
 const GENDER_ICONS = {'Boys':'👦','Girls':'👧','General':'🌐'};
 function classToAge(cls){
@@ -604,6 +615,7 @@ function loadDB(){
     (parsed.participants||[]).forEach(p=>{
       if(!p.programIds){ p.programIds = p.programId ? [p.programId] : []; }
       if(p.cls===undefined || p.cls===null) p.cls='';
+      if(p.division===undefined || p.division===null) p.division='';
     });
     (parsed.results||[]).forEach(r=>{
       r.winners = r.winners || {};
@@ -683,6 +695,13 @@ function recalcTeamPoints(){
 
 /* ===================== ROTATING SPOTLIGHT ===================== */
 let spotlightTimer = null;
+const SPOTLIGHT_THEMES = [
+  {grad:'linear-gradient(135deg,#e0b94d,#b8860b)', text:'#241a02'},
+  {grad:'linear-gradient(135deg,#34d399,#0f4a36)', text:'#ffffff'},
+  {grad:'linear-gradient(135deg,#60a5fa,#1e3a8a)', text:'#ffffff'},
+  {grad:'linear-gradient(135deg,#f472b6,#9d174d)', text:'#ffffff'},
+  {grad:'linear-gradient(135deg,#fb923c,#9a3412)', text:'#ffffff'},
+];
 function stopSpotlight(){ if(spotlightTimer){ clearInterval(spotlightTimer); spotlightTimer=null; } }
 function computeSpotlightSlides(){
   if(!db.results.length || !db.teams.length) return [];
@@ -707,6 +726,9 @@ function startSpotlight(elId){
   let idx = 0;
   const paint = ()=>{
     const s = slides[idx % slides.length];
+    const theme = SPOTLIGHT_THEMES[idx % SPOTLIGHT_THEMES.length];
+    el.style.background = theme.grad;
+    el.style.color = theme.text;
     el.innerHTML = `<div class="crown">${s.icon}</div><div><small>${s.label}</small><b>${esc(s.name)}</b><small>${s.points} points</small></div>`;
     el.classList.remove('spot-fade');
     void el.offsetWidth;
@@ -735,6 +757,11 @@ function renderHome(){
 }
 
 /* ===================== RESULT CARD ===================== */
+function findCandidateClassInfo(name, teamId){
+  const p = db.participants.find(p=>p.name===name && p.teamId===teamId);
+  if(!p || !p.cls) return '';
+  return p.cls + (p.division ? ' '+p.division : '');
+}
 function resultCardHTML(r){
   const prog = db.programs.find(p=>p.id===r.programId);
   const tagClass = r.gender==='Boys'?'tag-boys':(r.gender==='Girls'?'tag-girls':'tag-general');
@@ -745,7 +772,8 @@ function resultCardHTML(r){
     (r.winners[pos]||[]).forEach(w=>{
       if(!w || !w.name) return;
       const team = db.teams.find(t=>t.id===w.teamId);
-      winnersHTML += `<div class="winner-row"><span class="medal">${medal}</span><b>${esc(w.name)}</b><span class="team-tag">${team?esc(team.name):''}</span><span class="pts">+${pts[pos]}</span></div>`;
+      const clsInfo = findCandidateClassInfo(w.name, w.teamId);
+      winnersHTML += `<div class="winner-row"><span class="medal">${medal}</span><b>${esc(w.name)}${clsInfo?` <span class="cand-class">(${esc(clsInfo)})</span>`:''}</b><span class="team-tag">${team?esc(team.name):''}</span><span class="pts">+${pts[pos]}</span></div>`;
     });
   });
   const gradeLabels = {gradeA:['🅰️','Grade A'],gradeB:['🅱️','Grade B'],gradeC:['🅲️','Grade C'],participation:['🎗️','Participation']};
@@ -755,7 +783,8 @@ function resultCardHTML(r){
       (r.grades[key]||[]).forEach(e=>{
         if(!e.name) return;
         const team = db.teams.find(t=>t.id===e.teamId);
-        gradesHTML += `<div class="winner-row"><span class="medal">${gradeLabels[key][0]}</span><b>${esc(e.name)}</b><span class="team-tag">${team?esc(team.name):''} · ${gradeLabels[key][1]}</span><span class="pts">+${pts[key]}</span></div>`;
+        const clsInfo = findCandidateClassInfo(e.name, e.teamId);
+        gradesHTML += `<div class="winner-row"><span class="medal">${gradeLabels[key][0]}</span><b>${esc(e.name)}${clsInfo?` <span class="cand-class">(${esc(clsInfo)})</span>`:''}</b><span class="team-tag">${team?esc(team.name):''} · ${gradeLabels[key][1]}</span><span class="pts">+${pts[key]}</span></div>`;
       });
     });
   }
@@ -956,6 +985,7 @@ function setProgFilter(key,val){ progFilter[key]=val; renderProgramsView(); }
 
 /* ===================== SETTINGS VIEW ===================== */
 function renderSettingsView(){
+  document.getElementById('adminExcelCard').style.display = isAdmin?'block':'none';
   document.getElementById('adminBackupCard').style.display = isAdmin?'block':'none';
   document.getElementById('adminPrintCard').style.display = isAdmin?'block':'none';
   document.getElementById('adminOnlySettings').style.display = isAdmin?'block':'none';
@@ -1028,6 +1058,89 @@ function backToLoginStep1(){ resetLoginGate(); document.getElementById('loginPin
 function resetLoginGate(){
   document.getElementById('loginStep1').style.display='block';
   document.getElementById('loginStep2').style.display='none';
+}
+
+/* ===================== EXCEL BULK IMPORT ===================== */
+function downloadExcelTemplate(){
+  if(typeof XLSX==='undefined'){ toast('Excel library failed to load — check internet connection'); return; }
+  const wsData = [
+    ['Number','Name','Class','Division','Gender','Team','Programs (codes, comma-separated)'],
+    ['101','Muhammed Ali','4','B','Boys','Team A','SB01, SB02'],
+    ['102','Ayisha Fathima','7','A','Girls','Team B','JR01']
+  ];
+  const ws = XLSX.utils.aoa_to_sheet(wsData);
+  ws['!cols'] = [{wch:8},{wch:22},{wch:7},{wch:9},{wch:9},{wch:14},{wch:32}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Participants');
+
+  const progRows = [['Program Code','Program Name','Category']];
+  db.programs.forEach(p=>{
+    p.categories.forEach(c=>{ progRows.push([p.code, p.name, c.gender+(c.age==='All'?'':' '+c.age)]); });
+  });
+  if(progRows.length===1) progRows.push(['—','Add programs first','—']);
+  const ws2 = XLSX.utils.aoa_to_sheet(progRows);
+  ws2['!cols'] = [{wch:12},{wch:28},{wch:18}];
+  XLSX.utils.book_append_sheet(wb, ws2, 'Program Codes');
+
+  const teamRows = [['Team Name']];
+  db.teams.forEach(t=>teamRows.push([t.name]));
+  if(teamRows.length===1) teamRows.push(['—']);
+  const ws3 = XLSX.utils.aoa_to_sheet(teamRows);
+  ws3['!cols'] = [{wch:18}];
+  XLSX.utils.book_append_sheet(wb, ws3, 'Teams');
+
+  XLSX.writeFile(wb, 'Participant_Import_Template.xlsx');
+  toast('Template downloaded — check the Program Codes & Teams sheets for exact spellings');
+}
+function importParticipantsFromExcel(e){
+  const file = e.target.files[0]; if(!file) return;
+  if(typeof XLSX==='undefined'){ toast('Excel library failed to load — check internet connection'); e.target.value=''; return; }
+  const reader = new FileReader();
+  reader.onload = function(ev){
+    try{
+      const data = new Uint8Array(ev.target.result);
+      const wb = XLSX.read(data, {type:'array'});
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(sheet, {defval:''});
+      let added=0, skippedRows=0, unmatchedCodes=0, unmatchedTeam=0;
+      rows.forEach(row=>{
+        const get = (...keys)=>{ for(const k of keys){ if(row[k]!==undefined && String(row[k]).trim()!=='') return String(row[k]).trim(); } return ''; };
+        const name = get('Name','name');
+        if(!name){ skippedRows++; return; }
+        const number = get('Number','number');
+        const clsRaw = get('Class','class');
+        const cls = clsRaw || '';
+        const division = get('Division','division');
+        let genderRaw = get('Gender','gender');
+        const gender = GENDERS.find(g=>g.toLowerCase()===genderRaw.toLowerCase()) || GENDERS[0];
+        const teamName = get('Team','team');
+        let teamId = null;
+        if(teamName){
+          const team = db.teams.find(t=>t.name.toLowerCase()===teamName.toLowerCase());
+          if(team) teamId = team.id; else unmatchedTeam++;
+        }
+        const progCell = get('Programs (codes, comma-separated)','Programs','programs');
+        const codes = progCell.split(',').map(c=>c.trim()).filter(Boolean);
+        const programIds = [];
+        codes.forEach(code=>{
+          const prog = db.programs.find(p=>p.code.toLowerCase()===code.toLowerCase());
+          if(prog) programIds.push(prog.id); else unmatchedCodes++;
+        });
+        const age = cls ? classToAge(cls) : AGES[0];
+        db.participants.push({id:uid(), number, name, cls, division, teamId, gender, age, programIds});
+        added++;
+      });
+      saveDB();
+      renderAdminTab();
+      let msg = `Imported ${added} participant(s)`;
+      if(unmatchedCodes) msg += ` · ${unmatchedCodes} program code(s) not matched`;
+      if(unmatchedTeam) msg += ` · ${unmatchedTeam} team name(s) not matched`;
+      if(skippedRows) msg += ` · ${skippedRows} row(s) skipped`;
+      toast(msg);
+    }catch(err){ toast('Could not read this Excel file — make sure it follows the template'); }
+  };
+  reader.readAsArrayBuffer(file);
+  e.target.value = '';
 }
 
 /* ===================== BACKUP / RESTORE ===================== */
@@ -1107,40 +1220,78 @@ function printProgramList(){
   }
   downloadReport('Program_List.html', 'Program List', html);
 }
-function printParticipantsByProgram(){
+function openTeamSheetSelector(){
   if(!db.teams.length){ toast('No teams to print'); return; }
-  let html = `<h1>Meeladunnabi — Team Participant Sheets</h1><p class="meta">For Team Leaders · Generated ${new Date().toLocaleDateString()}</p>`;
-  db.teams.forEach(team=>{
-    html += `<div class="team-block"><h1 style="font-size:17px;">${team.symbol} ${esc(team.name)}</h1>`;
+  const catOptions = ['Boys','Girls'].flatMap(g=>AGES.map(a=>`<option value="${g}|${a}">${GENDER_ICONS[g]} ${g} — ${a}</option>`)).join('');
+  document.getElementById('modalContent').innerHTML = `
+    <h3>Print Team Sheet</h3>
+    <p style="font-size:.78rem;color:var(--ink-soft);margin:0 0 14px;">Choose a team and category to print only what that leader needs.</p>
+    <div class="field"><label>Team</label><select id="tsTeam">
+      <option value="all">All Teams</option>
+      ${teamOptionsHTML(null)}
+    </select></div>
+    <div class="field"><label>Category</label><select id="tsCategory">
+      <option value="all">All Categories</option>
+      ${catOptions}
+      <option value="General|All">${GENDER_ICONS.General} General</option>
+    </select></div>
+    <button class="btn btn-primary btn-block" onclick="generateTeamSheet()" style="margin-top:8px;">⬇️ Download Sheet</button>`;
+  openModal();
+}
+function generateTeamSheet(){
+  const teamSel = document.getElementById('tsTeam').value;
+  const catSel = document.getElementById('tsCategory').value;
+  const teams = teamSel==='all' ? db.teams : db.teams.filter(t=>t.id===teamSel);
+  let catFilter = null;
+  if(catSel!=='all'){
+    const [gender,age] = catSel.split('|');
+    catFilter = {gender,age};
+  }
+  if(!teams.length){ toast('No teams to print'); return; }
+  let html = `<h1>Meeladunnabi — Team Participant Sheet</h1><p class="meta">For Team Leaders · Generated ${new Date().toLocaleDateString()}</p>`;
+  let anyTeamContent = false;
+  teams.forEach(team=>{
+    let teamHTML = `<div class="team-block"><h1 style="font-size:17px;">${team.symbol} ${esc(team.name)}</h1>`;
     let anyContent = false;
-    ['Boys','Girls'].forEach(gender=>{
-      AGES.forEach(age=>{
-        const progs = db.programs.filter(p=>p.categories.some(c=>c.gender===gender && c.age===age));
-        progs.forEach(p=>{
-          const parts = db.participants.filter(pa=>pa.teamId===team.id && pa.gender===gender && pa.age===age && (pa.programIds||[]).includes(p.id));
+    const genderList = catFilter ? [catFilter.gender] : ['Boys','Girls','General'];
+    genderList.forEach(gender=>{
+      if(gender==='General'){
+        const generalProgs = db.programs.filter(p=>p.categories.some(c=>c.gender==='General'));
+        generalProgs.forEach(p=>{
+          const parts = db.participants.filter(pa=>pa.teamId===team.id && pa.gender==='General' && (pa.programIds||[]).includes(p.id));
           if(!parts.length) return;
           anyContent = true;
-          html += `<div class="cat-block"><h2>${gender} — ${age}</h2><h3>${esc(p.code)} — ${esc(p.name)}</h3>
-            <table><thead><tr><th>#</th><th>Name</th><th>Class</th></tr></thead>
-            <tbody>${parts.map(pa=>`<tr><td>${esc(pa.number)}</td><td>${esc(pa.name)}</td><td>${esc(pa.cls||'—')}</td></tr>`).join('')}</tbody></table>
+          teamHTML += `<div class="cat-block"><h2>General</h2><h3>${esc(p.code)} — ${esc(p.name)}</h3>
+            <table><thead><tr><th>#</th><th>Name</th><th>Class</th><th>Division</th></tr></thead>
+            <tbody>${parts.map(pa=>`<tr><td>${esc(pa.number)}</td><td>${esc(pa.name)}</td><td>${esc(pa.cls||'—')}</td><td>${esc(pa.division||'—')}</td></tr>`).join('')}</tbody></table>
           </div>`;
         });
-      });
+      } else {
+        const ageList = catFilter ? [catFilter.age] : AGES;
+        ageList.forEach(age=>{
+          const progs = db.programs.filter(p=>p.categories.some(c=>c.gender===gender && c.age===age));
+          progs.forEach(p=>{
+            const parts = db.participants.filter(pa=>pa.teamId===team.id && pa.gender===gender && pa.age===age && (pa.programIds||[]).includes(p.id));
+            if(!parts.length) return;
+            anyContent = true;
+            teamHTML += `<div class="cat-block"><h2>${gender} — ${age}</h2><h3>${esc(p.code)} — ${esc(p.name)}</h3>
+              <table><thead><tr><th>#</th><th>Name</th><th>Class</th><th>Division</th></tr></thead>
+              <tbody>${parts.map(pa=>`<tr><td>${esc(pa.number)}</td><td>${esc(pa.name)}</td><td>${esc(pa.cls||'—')}</td><td>${esc(pa.division||'—')}</td></tr>`).join('')}</tbody></table>
+            </div>`;
+          });
+        });
+      }
     });
-    const generalProgs = db.programs.filter(p=>p.categories.some(c=>c.gender==='General'));
-    generalProgs.forEach(p=>{
-      const parts = db.participants.filter(pa=>pa.teamId===team.id && pa.gender==='General' && (pa.programIds||[]).includes(p.id));
-      if(!parts.length) return;
-      anyContent = true;
-      html += `<div class="cat-block"><h2>General</h2><h3>${esc(p.code)} — ${esc(p.name)}</h3>
-        <table><thead><tr><th>#</th><th>Name</th><th>Class</th></tr></thead>
-        <tbody>${parts.map(pa=>`<tr><td>${esc(pa.number)}</td><td>${esc(pa.name)}</td><td>${esc(pa.cls||'—')}</td></tr>`).join('')}</tbody></table>
-      </div>`;
-    });
-    if(!anyContent) html += `<p style="font-size:12px;color:#888;">No candidates registered for this team yet.</p>`;
-    html += `</div>`;
+    if(!anyContent){ teamHTML += `<p style="font-size:12px;color:#888;">No candidates found for this selection.</p>`; }
+    else { anyTeamContent = true; }
+    teamHTML += `</div>`;
+    html += teamHTML;
   });
-  downloadReport('Team_Sheets.html', 'Team Participant Sheets', html);
+  if(!anyTeamContent){ toast('No candidates match this selection'); }
+  const teamLabel = teamSel==='all' ? 'All_Teams' : (db.teams.find(t=>t.id===teamSel)?.name||'Team').replace(/\s+/g,'_');
+  const catLabel = catFilter ? `${catFilter.gender}_${catFilter.age}`.replace(/\s+/g,'_') : 'All_Categories';
+  closeModal();
+  downloadReport(`Team_Sheet_${teamLabel}_${catLabel}.html`, 'Team Participant Sheet', html);
 }
 
 /* ===================== ADMIN DASHBOARD ===================== */
@@ -1301,7 +1452,7 @@ function participantsListHTML(){
     const team = db.teams.find(t=>t.id===pa.teamId);
     const progs = db.programs.filter(p=>(pa.programIds||[]).includes(p.id));
     return `<div class="list-row">
-      <div class="lr-info"><b>#${esc(pa.number)} ${esc(pa.name)}</b><small>${pa.cls?'Class '+esc(pa.cls)+' · ':''}${team?team.name:'No team'} · ${pa.gender}${pa.gender==='General'?'':' '+pa.age}${progs.length?' · '+progs.map(p=>p.code).join(', '):''}</small></div>
+      <div class="lr-info"><b>#${esc(pa.number)} ${esc(pa.name)}</b><small>${pa.cls?'Class '+esc(pa.cls)+(pa.division?' '+esc(pa.division):'')+' · ':''}${team?team.name:'No team'} · ${pa.gender}${pa.gender==='General'?'':' '+pa.age}${progs.length?' · '+progs.map(p=>p.code).join(', '):''}</small></div>
       <div class="lr-actions">
         <button class="icon-btn" onclick="openParticipantForm('${pa.id}')">✏️</button>
         <button class="icon-btn" ondblclick="deleteParticipant('${pa.id}')" title="Double-tap to delete">🗑️</button>
@@ -1332,6 +1483,7 @@ function openParticipantForm(id){
   const pa = id ? db.participants.find(x=>x.id===id) : null;
   const initGender = pa?pa.gender:GENDERS[0];
   const initCls = pa&&pa.cls ? pa.cls : 1;
+  const initDivision = pa&&pa.division ? pa.division : '';
   const initAge = pa?pa.age:classToAge(initCls);
   document.getElementById('modalContent').innerHTML = `
     <h3>${pa?'Edit Participant':'Add Participant'}</h3>
@@ -1341,12 +1493,16 @@ function openParticipantForm(id){
     </div>
     <div class="row2">
       <div class="field"><label>Class</label><select id="mPaClass" onchange="onClassOrGenderChange()">${CLASSES.map(c=>`<option value="${c}" ${+initCls===c?'selected':''}>${c}</option>`).join('')}</select></div>
-      <div class="field"><label>Team</label><select id="mPaTeam"><option value="">—</option>${teamOptionsHTML(pa?pa.teamId:null)}</select></div>
+      <div class="field"><label>Division (optional)</label><select id="mPaDivision">
+        <option value="" ${!initDivision?'selected':''}>—</option>
+        ${DIVISIONS.map(d=>`<option ${initDivision===d?'selected':''}>${d}</option>`).join('')}
+      </select></div>
     </div>
     <div class="row2">
-      <div class="field"><label>Gender</label><select id="mPaGender" onchange="onClassOrGenderChange()">${GENDERS.map(g=>`<option ${initGender===g?'selected':''}>${g}</option>`).join('')}</select></div>
+      <div class="field"><label>Team</label><select id="mPaTeam"><option value="">—</option>${teamOptionsHTML(pa?pa.teamId:null)}</select></div>
       <div class="field"><label>Category (auto)</label><input id="mPaAgeDisplay" value="${initAge}" disabled style="background:var(--bg);color:var(--ink-soft);"></div>
     </div>
+    <div class="field"><label>Gender</label><select id="mPaGender" onchange="onClassOrGenderChange()">${GENDERS.map(g=>`<option ${initGender===g?'selected':''}>${g}</option>`).join('')}</select></div>
     <div class="field"><label>Programs in this Category — tick all that apply</label>
       <div id="paProgramsWrap">${participantProgramsChecklistHTML(initGender,initAge,pa?pa.programIds:[])}</div>
     </div>
@@ -1358,7 +1514,8 @@ function saveParticipant(id){
   if(!name){ toast('Candidate name required'); return; }
   const programIds = [...document.querySelectorAll('.paProgramCheck:checked')].map(cb=>cb.value);
   const cls = document.getElementById('mPaClass').value;
-  const data = {number:document.getElementById('mPaNum').value.trim(),name,cls,teamId:document.getElementById('mPaTeam').value||null,gender:document.getElementById('mPaGender').value,age:classToAge(cls),programIds};
+  const division = document.getElementById('mPaDivision').value;
+  const data = {number:document.getElementById('mPaNum').value.trim(),name,cls,division,teamId:document.getElementById('mPaTeam').value||null,gender:document.getElementById('mPaGender').value,age:classToAge(cls),programIds};
   if(id){ const pa=db.participants.find(x=>x.id===id); Object.assign(pa,data); }
   else { db.participants.push({id:uid(), ...data}); }
   saveDB(); closeModal(); renderAdminTab(); toast('Participant saved');
