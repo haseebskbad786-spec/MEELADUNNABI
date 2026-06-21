@@ -446,6 +446,17 @@ button{font-family:inherit;cursor:pointer;border:none;}
     <p style="margin-bottom:12px;">Print or save the current view as a PDF.</p>
     <button class="btn btn-outline btn-block" onclick="window.print()">🖨️ Export / Print as PDF</button>
   </div>
+  <div class="info-card" id="publicSyncCard">
+    <h3>Live Sync Status</h3>
+    <p id="syncStatusText" style="font-size:.84rem;">⚪ Not connected — using local storage only</p>
+  </div>
+  <div class="info-card" id="adminSyncCard" style="display:none;">
+    <h3>Live Sync Across Devices</h3>
+    <p style="margin-bottom:12px;">Connect a free Firebase Realtime Database so every phone shows the same live data — programs, participants, results, and scoreboard all update automatically on every device. Leave blank to keep this device working offline only.</p>
+    <div class="field"><label>Firebase Database URL</label><input type="text" id="firebaseUrlInput" placeholder="https://your-project-default-rtdb.firebaseio.com"></div>
+    <button class="btn btn-primary btn-block" style="margin-bottom:8px;" onclick="saveFirebaseUrlFromInput()">💾 Save &amp; Connect</button>
+    <button class="btn btn-outline btn-block" onclick="forceSyncNow()">🔄 Force Sync Now</button>
+  </div>
   <div class="info-card" id="adminExcelCard" style="display:none;">
     <h3>Bulk Import Participants (Excel)</h3>
     <p style="margin-bottom:12px;">Download the template, fill in Name/Class/Team/Programs for all candidates, then upload it here — much faster than adding one by one.</p>
@@ -605,30 +616,123 @@ function defaultDB(){
   };
 }
 let db = loadDB();
+function normalizeDB(parsed){
+  if(!parsed.teams || !parsed.settings) return null;
+  if(!parsed.settings.adminPin) parsed.settings.adminPin = '1234';
+  (parsed.participants||[]).forEach(p=>{
+    if(!p.programIds){ p.programIds = p.programId ? [p.programId] : []; }
+    if(p.cls===undefined || p.cls===null) p.cls='';
+    if(p.division===undefined || p.division===null) p.division='';
+  });
+  (parsed.results||[]).forEach(r=>{
+    r.winners = r.winners || {};
+    ['first','second','third'].forEach(pos=>{
+      if(!Array.isArray(r.winners[pos])){ r.winners[pos] = r.winners[pos] ? [r.winners[pos]] : []; }
+    });
+    r.grades = r.grades || {gradeA:[],gradeB:[],gradeC:[],participation:[]};
+  });
+  return parsed;
+}
 function loadDB(){
   try{
     const raw = localStorage.getItem(STORAGE_KEY);
     if(!raw) return defaultDB();
     const parsed = JSON.parse(raw);
-    if(!parsed.teams || !parsed.settings) return defaultDB();
-    if(!parsed.settings.adminPin) parsed.settings.adminPin = '1234';
-    (parsed.participants||[]).forEach(p=>{
-      if(!p.programIds){ p.programIds = p.programId ? [p.programId] : []; }
-      if(p.cls===undefined || p.cls===null) p.cls='';
-      if(p.division===undefined || p.division===null) p.division='';
-    });
-    (parsed.results||[]).forEach(r=>{
-      r.winners = r.winners || {};
-      ['first','second','third'].forEach(pos=>{
-        if(!Array.isArray(r.winners[pos])){ r.winners[pos] = r.winners[pos] ? [r.winners[pos]] : []; }
-      });
-      r.grades = r.grades || {gradeA:[],gradeB:[],gradeC:[],participation:[]};
-    });
-    return parsed;
+    const normalized = normalizeDB(parsed);
+    return normalized || defaultDB();
   }catch(e){ return defaultDB(); }
 }
-function saveDB(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(db)); }
+function saveDB(){
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
+  queueFirebasePush();
+}
 function uid(){ return Math.random().toString(36).slice(2,10)+Date.now().toString(36).slice(-4); }
+
+/* ===================== LIVE SYNC (FIREBASE REALTIME DATABASE) ===================== */
+const FIREBASE_URL_KEY = 'mrms_firebase_url';
+let firebasePushTimer = null;
+let firebasePollTimer = null;
+let firebaseSyncing = false;
+function getFirebaseUrl(){ return (localStorage.getItem(FIREBASE_URL_KEY)||'').trim().replace(/\/+$/,''); }
+function setFirebaseUrl(url){
+  url = (url||'').trim().replace(/\/+$/,'');
+  if(url) localStorage.setItem(FIREBASE_URL_KEY, url);
+  else localStorage.removeItem(FIREBASE_URL_KEY);
+  stopFirebaseSync();
+  if(url) startFirebaseSync();
+}
+function queueFirebasePush(){
+  const url = getFirebaseUrl();
+  if(!url) return;
+  clearTimeout(firebasePushTimer);
+  firebasePushTimer = setTimeout(()=>{ pushToFirebase(); }, 700);
+}
+async function pushToFirebase(){
+  const url = getFirebaseUrl();
+  if(!url) return;
+  try{
+    await fetch(url+'/meeladunnabi.json', {
+      method:'PUT',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(db)
+    });
+    setSyncStatus('synced');
+  }catch(e){ setSyncStatus('error'); }
+}
+async function fetchFromFirebase(silent){
+  const url = getFirebaseUrl();
+  if(!url) return;
+  try{
+    const res = await fetch(url+'/meeladunnabi.json');
+    const data = await res.json();
+    if(!data){ setSyncStatus('synced'); return; }
+    const normalized = normalizeDB(data);
+    if(!normalized) return;
+    const incoming = JSON.stringify(normalized);
+    const current = JSON.stringify(db);
+    if(incoming!==current){
+      db = normalized;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
+      refreshCurrentView();
+      if(!silent) toast('🔄 Synced latest data');
+    }
+    setSyncStatus('synced');
+  }catch(e){ setSyncStatus('error'); }
+}
+function refreshCurrentView(){
+  if(document.getElementById('modalBg').classList.contains('show')) return;
+  if(currentViewName==='home') renderHome();
+  if(currentViewName==='results') renderResultsView();
+  if(currentViewName==='scoreboard') renderScoreboard();
+  if(currentViewName==='programs') renderProgramsView();
+  if(currentViewName==='dashboard') renderDashboard();
+}
+function startFirebaseSync(){
+  const url = getFirebaseUrl();
+  if(!url) return;
+  fetchFromFirebase(true);
+  stopFirebaseSync();
+  firebasePollTimer = setInterval(()=>{ fetchFromFirebase(true); }, 6000);
+}
+function stopFirebaseSync(){ if(firebasePollTimer){ clearInterval(firebasePollTimer); firebasePollTimer=null; } }
+function setSyncStatus(state){
+  const el = document.getElementById('syncStatusText');
+  if(!el) return;
+  if(state==='synced') el.innerHTML = '🟢 Connected — syncing live across devices';
+  else if(state==='error') el.innerHTML = '🟠 Could not reach the database — check the URL or internet connection';
+  else el.innerHTML = '⚪ Not connected — using local storage only';
+}
+function saveFirebaseUrlFromInput(){
+  const url = document.getElementById('firebaseUrlInput').value;
+  setFirebaseUrl(url);
+  toast(url ? 'Live sync enabled' : 'Live sync disabled');
+  renderSettingsView();
+}
+function forceSyncNow(){
+  if(!getFirebaseUrl()){ toast('Set up the Firebase URL first'); return; }
+  pushToFirebase();
+  toast('Pushed current data to all devices');
+}
 
 let isAdmin = sessionStorage.getItem('mrms_admin') === '1';
 
@@ -639,7 +743,9 @@ function toggleDrawer(){
   document.getElementById('overlay').classList.toggle('show');
   document.getElementById('hamBtn').classList.toggle('open');
 }
+let currentViewName = 'home';
 function showView(name){
+  currentViewName = name;
   stopSpotlight();
   document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
   const el = document.getElementById('view-'+name);
@@ -985,6 +1091,7 @@ function setProgFilter(key,val){ progFilter[key]=val; renderProgramsView(); }
 
 /* ===================== SETTINGS VIEW ===================== */
 function renderSettingsView(){
+  document.getElementById('adminSyncCard').style.display = isAdmin?'block':'none';
   document.getElementById('adminExcelCard').style.display = isAdmin?'block':'none';
   document.getElementById('adminBackupCard').style.display = isAdmin?'block':'none';
   document.getElementById('adminPrintCard').style.display = isAdmin?'block':'none';
@@ -992,6 +1099,11 @@ function renderSettingsView(){
   document.getElementById('changePwCard').style.display = isAdmin?'block':'none';
   document.getElementById('changePinCard').style.display = isAdmin?'block':'none';
   document.getElementById('logoutCard').style.display = isAdmin?'block':'none';
+  const currentUrl = getFirebaseUrl();
+  if(isAdmin && document.getElementById('firebaseUrlInput')){
+    document.getElementById('firebaseUrlInput').value = currentUrl;
+  }
+  setSyncStatus(currentUrl ? 'synced' : 'off');
   if(isAdmin){
     const p = db.settings.points;
     document.getElementById('ptFirst').value=p.first;
@@ -1180,10 +1292,10 @@ function downloadReport(filename, title, bodyHTML){
       th,td{border:1px solid #bbb;padding:5px 7px;text-align:left;}
       th{background:#e3f1e7;}
       .cat-block{page-break-inside:avoid;margin-bottom:10px;}
-      .team-block{page-break-before:always;}
-      .team-block:first-of-type{page-break-before:auto;}
+      .team-block{margin-bottom:6px;}
+      .team-block.new-page{page-break-before:always;}
       .print-hint{background:#fbf0d4;border:1px solid #cf9d2e;color:#9a6f0f;padding:10px 14px;border-radius:8px;font-size:12px;margin-bottom:16px;}
-      @media print{ .print-hint{display:none;} }
+      @media print{ .print-hint{display:none;} body{padding:10px;} }
     </style></head><body>
     <div class="print-hint">📲 To print or save as PDF: tap your browser's menu (⋮ or ⋯) and choose "Print" or "Share".</div>
     ${bodyHTML}</body></html>`;
@@ -1250,8 +1362,9 @@ function generateTeamSheet(){
   if(!teams.length){ toast('No teams to print'); return; }
   let html = `<h1>Meeladunnabi — Team Participant Sheet</h1><p class="meta">For Team Leaders · Generated ${new Date().toLocaleDateString()}</p>`;
   let anyTeamContent = false;
-  teams.forEach(team=>{
-    let teamHTML = `<div class="team-block"><h1 style="font-size:17px;">${team.symbol} ${esc(team.name)}</h1>`;
+  teams.forEach((team,teamIdx)=>{
+    const blockClass = teamIdx>0 ? 'team-block new-page' : 'team-block';
+    let teamHTML = `<div class="${blockClass}"><h1 style="font-size:17px;">${team.symbol} ${esc(team.name)}</h1>`;
     let anyContent = false;
     const genderList = catFilter ? [catFilter.gender] : ['Boys','Girls','General'];
     genderList.forEach(gender=>{
@@ -1728,6 +1841,7 @@ function esc(s){ return (s==null?'':String(s)).replace(/[&<>"']/g, c=>({'&':'&am
 /* ===================== INIT ===================== */
 if(isAdmin) document.getElementById('drawerUserTag').textContent='Administrator';
 showView('home');
+if(getFirebaseUrl()) startFirebaseSync();
 </script>
 </body>
 </html>
